@@ -40,6 +40,11 @@ class VolunteerTaskViewSet(viewsets.ModelViewSet):
     def accept(self, request, pk=None):
         task = self.get_object()
 
+        if task.status not in ['assigned', 'accepted']:
+            return Response({
+                'message': '当前任务状态不允许接单'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         profile = getattr(request.user, 'profile', None)
         if profile is None or profile.role != 'volunteer':
             return Response({
@@ -58,6 +63,9 @@ class VolunteerTaskViewSet(viewsets.ModelViewSet):
         task.accepted_at = timezone.now()
         task.save()
 
+        profile.is_available = False
+        profile.save()
+
         help_request = task.help_request
         help_request.status = 'processing'
         help_request.save()
@@ -70,6 +78,16 @@ class VolunteerTaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         task = self.get_object()
+
+        if task.status == 'completed':
+            return Response({
+                'message': '该任务已完成，不能重复完成'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if task.status == 'cancelled':
+            return Response({
+                'message': '该任务已取消，不能完成'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         profile = getattr(request.user, 'profile', None)
         if profile is None or profile.role != 'volunteer':
@@ -88,6 +106,9 @@ class VolunteerTaskViewSet(viewsets.ModelViewSet):
         task.feedback = feedback
         task.completed_at = timezone.now()
         task.save()
+
+        profile.is_available = True
+        profile.save()
 
         help_request = task.help_request
         help_request.status = 'completed'

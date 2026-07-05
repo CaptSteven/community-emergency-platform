@@ -51,6 +51,14 @@
         </el-form-item>
 
         <el-form-item label="状态">
+          <el-form-item label="关键词">
+            <el-input
+              v-model="filters.search"
+              placeholder="搜索标题、内容或社区"
+              clearable
+              style="width: 220px"
+            />
+          </el-form-item>
           <el-select
             v-model="filters.is_active"
             placeholder="全部状态"
@@ -277,7 +285,8 @@ const formRef = ref(null)
 const filters = reactive({
   warning_type: '',
   level: '',
-  is_active: ''
+  is_active: '',
+  search: ''
 })
 
 const form = reactive({
@@ -319,8 +328,8 @@ const loadData = async () => {
       params.level = filters.level
     }
 
-    if (filters.is_active !== '') {
-      params.is_active = filters.is_active
+    if (filters.search) {
+      params.search = filters.search
     }
 
     warnings.value = await request.get('/warnings/', { params })
@@ -333,6 +342,7 @@ const resetFilters = () => {
   filters.warning_type = ''
   filters.level = ''
   filters.is_active = ''
+  filters.search = ''
   loadData()
 }
 
@@ -404,35 +414,51 @@ const submitForm = async () => {
 const toggleActive = async row => {
   const actionText = row.is_active ? '停用' : '启用'
 
-  await ElMessageBox.confirm(
-    `确定要${actionText}该预警吗？`,
-    '提示',
-    {
-      type: 'warning'
+  try {
+    await ElMessageBox.confirm(
+      `确定要${actionText}该预警吗？`,
+      '提示',
+      {
+        type: 'warning',
+        confirmButtonText: `确定${actionText}`,
+        cancelButtonText: '取消'
+      }
+    )
+
+    await request.patch(`/warnings/${row.id}/`, {
+      is_active: !row.is_active
+    })
+
+    ElMessage.success(`${actionText}成功`)
+    await loadData()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
     }
-  )
-
-  await request.patch(`/warnings/${row.id}/`, {
-    is_active: !row.is_active
-  })
-
-  ElMessage.success(`${actionText}成功`)
-  loadData()
+  }
 }
 
 const deleteWarning = async row => {
-  await ElMessageBox.confirm(
-    `确定要删除预警「${row.title}」吗？删除后不可恢复。`,
-    '危险操作',
-    {
-      type: 'warning'
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除预警「${row.title}」吗？删除后不可恢复。`,
+      '危险操作',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消'
+      }
+    )
+
+    await request.delete(`/warnings/${row.id}/`)
+
+    ElMessage.success('删除成功')
+    await loadData()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
     }
-  )
-
-  await request.delete(`/warnings/${row.id}/`)
-
-  ElMessage.success('删除成功')
-  loadData()
+  }
 }
 
 const levelTagType = level => {

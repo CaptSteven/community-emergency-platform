@@ -56,12 +56,39 @@ const router = createRouter({
 // 路由守卫：没有 token 不能进入后台
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
+  const rawUser = localStorage.getItem('user')
 
-  if (to.path !== '/login' && !token) {
-    next('/login')
-  } else {
-    next()
+  let user = null
+
+  try {
+    user = rawUser ? JSON.parse(rawUser) : null
+  } catch (e) {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
   }
+
+  if (to.path === '/login') {
+    if (token && user?.role === 'admin') {
+      next('/dashboard')
+    } else {
+      next()
+    }
+    return
+  }
+
+  if (!token) {
+    next('/login')
+    return
+  }
+
+  if (user?.role !== 'admin') {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    next('/login')
+    return
+  }
+
+  next()
 })
 
 export default router

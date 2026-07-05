@@ -34,3 +34,49 @@ a {
   width: 100%;
   height: 320px;
 }
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.page-subtitle {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.filter-card {
+  margin-bottom: 18px;
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.search-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pagination {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.danger-text {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.success-text {
+  color: #16a34a;
+  font-weight: 700;
+}

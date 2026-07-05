@@ -3,11 +3,13 @@ from rest_framework import viewsets
 from .models import Warning
 from .serializers import WarningSerializer
 from notifications.utils import create_notification
+from emergency_backend.permissions import IsAdminOrReadOnly
 
 
 class WarningViewSet(viewsets.ModelViewSet):
     queryset = Warning.objects.all()
     serializer_class = WarningSerializer
+    permission_classes = [IsAdminOrReadOnly]
     filterset_fields = ['warning_type', 'level', 'is_active', 'community']
     search_fields = ['title', 'content', 'community']
     ordering_fields = ['created_at', 'updated_at']

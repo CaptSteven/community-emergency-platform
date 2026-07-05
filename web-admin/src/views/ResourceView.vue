@@ -639,31 +639,47 @@ const submitMaterialForm = async () => {
 }
 
 const deleteShelter = async row => {
-  await ElMessageBox.confirm(
-    `确定要删除避难点「${row.name}」吗？删除后不可恢复。`,
-    '危险操作',
-    {
-      type: 'warning'
-    }
-  )
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除避难点「${row.name}」吗？删除后不可恢复。`,
+      '危险操作',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消'
+      }
+    )
 
-  await request.delete(`/shelters/${row.id}/`)
-  ElMessage.success('避难点删除成功')
-  loadShelters()
+    await request.delete(`/shelters/${row.id}/`)
+    ElMessage.success('避难点删除成功')
+    await loadShelters()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+  }
 }
 
 const deleteMaterial = async row => {
-  await ElMessageBox.confirm(
-    `确定要删除物资「${row.name}」吗？删除后不可恢复。`,
-    '危险操作',
-    {
-      type: 'warning'
-    }
-  )
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除物资「${row.name}」吗？删除后不可恢复。`,
+      '危险操作',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消'
+      }
+    )
 
-  await request.delete(`/materials/${row.id}/`)
-  ElMessage.success('物资删除成功')
-  loadMaterials()
+    await request.delete(`/materials/${row.id}/`)
+    ElMessage.success('物资删除成功')
+    await loadMaterials()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+  }
 }
 
 const formatTime = value => {

@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
+from emergency_backend.permissions import IsAdminRole
 
 from .models import UserProfile
 from .serializers import (
@@ -95,7 +96,7 @@ class MeAPIView(APIView):
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all().select_related('profile')
     serializer_class = UserListSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminRole]
 
     def get_queryset(self):
         user = self.request.user

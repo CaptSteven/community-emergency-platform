@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Django / environment
+.env
+*.env
+.env.*
+db.sqlite3
+media/
+
+# Node / Vue
+node_modules/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# System
+.DS_Store
+Thumbs.db

@@ -6,7 +6,6 @@ from requests_app.models import HelpRequest
 class VolunteerTask(models.Model):
     STATUS_CHOICES = (
         ('assigned', '已分配'),
-        ('accepted', '已接单'),
         ('processing', '处理中'),
         ('completed', '已完成'),
         ('cancelled', '已取消'),

@@ -59,8 +59,8 @@ const router = useRouter()
 const loading = ref(false)
 
 const form = reactive({
-  username: 'admin02',
-  password: '123456'
+  username: '',
+  password: ''
 })
 
 const handleLogin = async () => {
@@ -79,7 +79,7 @@ const handleLogin = async () => {
 
     const user = res.user
 
-    if (user.role !== 'admin') {
+    if (!user || user.role !== 'admin') {
       ElMessage.error('当前账号不是管理员，不能进入后台')
       return
     }
@@ -89,6 +89,8 @@ const handleLogin = async () => {
 
     ElMessage.success('登录成功')
     router.push('/dashboard')
+  } catch (error) {
+    ElMessage.error('登录失败，请检查账号、密码或后端服务是否正常')
   } finally {
     loading.value = false
   }

@@ -24,6 +24,14 @@
         </el-form-item>
 
         <el-form-item label="紧急程度">
+          <el-form-item label="关键词">
+            <el-input
+              v-model="filters.search"
+              placeholder="搜索居民、描述或地址"
+              clearable
+              style="width: 220px"
+            />
+          </el-form-item>
           <el-select v-model="filters.urgency" placeholder="全部紧急程度" clearable style="width: 180px">
             <el-option label="低" value="low" />
             <el-option label="中" value="medium" />
@@ -78,7 +86,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openDetail(row)">
               详情
@@ -91,6 +99,14 @@
               @click="openAssignDialog(row)"
             >
               分配志愿者
+            </el-button>
+            <el-button
+              v-if="row.status !== 'completed' && row.status !== 'cancelled'"
+              size="small"
+              type="danger"
+              @click="cancelRequest(row)"
+            >
+              取消
             </el-button>
           </template>
         </el-table-column>
@@ -170,7 +186,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
 
 const loading = ref(false)
@@ -183,9 +199,33 @@ const detailVisible = ref(false)
 const assignVisible = ref(false)
 const currentRequest = ref(null)
 
+const cancelRequest = async row => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要取消该求助吗？',
+      '提示',
+      {
+        type: 'warning',
+        confirmButtonText: '确定取消',
+        cancelButtonText: '再想想'
+      }
+    )
+
+    await request.post(`/help-requests/${row.id}/cancel/`)
+
+    ElMessage.success('求助已取消')
+    await loadData()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+  }
+}
+
 const filters = reactive({
   status: '',
-  urgency: ''
+  urgency: '',
+  search: ''
 })
 
 const assignForm = reactive({
@@ -206,6 +246,10 @@ const loadData = async () => {
       params.urgency = filters.urgency
     }
 
+    if (filters.search) {
+      params.search = filters.search
+    }
+
     helpRequests.value = await request.get('/help-requests/', { params })
   } finally {
     loading.value = false
@@ -223,6 +267,7 @@ const loadVolunteers = async () => {
 const resetFilters = () => {
   filters.status = ''
   filters.urgency = ''
+  filters.search = ''
   loadData()
 }
 
