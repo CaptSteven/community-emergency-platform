@@ -54,6 +54,13 @@ class HelpRequest(models.Model):
         verbose_name='求助描述'
     )
 
+    ai_summary = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name='智能摘要'
+    )
+
     address = models.CharField(
         max_length=255,
         blank=True,

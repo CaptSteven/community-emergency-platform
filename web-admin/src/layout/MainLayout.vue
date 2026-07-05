@@ -21,6 +21,10 @@
           <span>数据大屏</span>
         </el-menu-item>
 
+        <el-menu-item index="/command-center">
+          <span>一图指挥舱</span>
+        </el-menu-item>
+
         <el-menu-item index="/warnings">
           <span>灾害预警管理</span>
         </el-menu-item>
@@ -50,7 +54,14 @@
         </div>
 
         <div class="header-right">
-          <span class="user-info">{{ user?.username || '管理员' }}</span>
+          <el-badge :value="authState.unreadCount" :hidden="authState.unreadCount <= 0" class="bell-badge">
+            <el-button circle @click="router.push('/notifications')">🔔</el-button>
+          </el-badge>
+
+          <span class="user-info">
+            {{ authState.user?.username || '管理员' }}
+          </span>
+
           <el-button type="danger" plain size="small" @click="logout">
             退出登录
           </el-button>
@@ -65,26 +76,37 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { authState, clearAuth, initAuthFromStorage, loadUnreadCount } from '../stores/auth'
 
 const router = useRouter()
-
-const user = computed(() => {
-  const raw = localStorage.getItem('user')
-  return raw ? JSON.parse(raw) : null
-})
+let unreadTimer = null
 
 const logout = async () => {
   await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
     type: 'warning'
   })
 
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
+  clearAuth()
   router.push('/login')
 }
+
+onMounted(() => {
+  initAuthFromStorage()
+  loadUnreadCount().catch(() => {})
+  unreadTimer = window.setInterval(() => {
+    loadUnreadCount().catch(() => {})
+  }, 15000)
+})
+
+onBeforeUnmount(() => {
+  if (unreadTimer) {
+    window.clearInterval(unreadTimer)
+    unreadTimer = null
+  }
+})
 </script>
 
 <style scoped>
@@ -153,6 +175,10 @@ const logout = async () => {
 
 .user-info {
   color: #475569;
+}
+
+.bell-badge :deep(.el-button) {
+  font-size: 15px;
 }
 
 .main {

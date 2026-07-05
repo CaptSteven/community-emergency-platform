@@ -11,6 +11,6 @@ class ShelterAdmin(admin.ModelAdmin):
 
 @admin.register(Material)
 class MaterialAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'category', 'quantity', 'unit', 'storage_location', 'warning_quantity', 'updated_at')
-    list_filter = ('category',)
+    list_display = ('id', 'name', 'category', 'quantity', 'unit', 'storage_location', 'warning_quantity', 'expire_date', 'expiry_warning_days', 'updated_at')
+    list_filter = ('category', 'expire_date')
     search_fields = ('name', 'category', 'storage_location')

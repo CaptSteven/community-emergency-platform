@@ -54,6 +54,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '../api/request'
+import { setAuth, loadUnreadCount } from '../stores/auth'
 
 const router = useRouter()
 const loading = ref(false)
@@ -84,8 +85,8 @@ const handleLogin = async () => {
       return
     }
 
-    localStorage.setItem('token', res.token)
-    localStorage.setItem('user', JSON.stringify(user))
+    setAuth({ token: res.token, user })
+    await loadUnreadCount()
 
     ElMessage.success('登录成功')
     router.push('/dashboard')

@@ -86,6 +86,15 @@ class OverviewAPIView(APIView):
             quantity__lte=F('warning_quantity')
         ).count()
 
+        today_date = timezone.now().date()
+        expired_material_count = Material.objects.exclude(
+            expire_date__isnull=True
+        ).filter(expire_date__lt=today_date).count()
+        expiring_material_count = sum(
+            1 for item in Material.objects.exclude(expire_date__isnull=True).filter(expire_date__gte=today_date)
+            if (item.expire_date - today_date).days <= item.expiry_warning_days
+        )
+
         shelter_count = Shelter.objects.count()
         available_shelter_count = Shelter.objects.filter(is_available=True).count()
 
@@ -123,6 +132,8 @@ class OverviewAPIView(APIView):
             'available_shelter_count': available_shelter_count,
             'material_count': material_count,
             'low_stock_material_count': low_stock_material_count,
+            'expired_material_count': expired_material_count,
+            'expiring_material_count': expiring_material_count,
         }
 
         return Response(data)
@@ -231,6 +242,8 @@ class MaterialStockStatsAPIView(APIView):
                 'warning_quantity': item.warning_quantity,
                 'is_low_stock': item.quantity <= item.warning_quantity,
                 'storage_location': item.storage_location,
+                'expire_date': item.expire_date,
+                'days_until_expire': (item.expire_date - timezone.now().date()).days if item.expire_date else None,
             })
 
         return Response(data)
@@ -258,3 +271,210 @@ class DailyHelpRequestStatsAPIView(APIView):
             })
 
         return Response(result)
+
+class HelpRequestMapDataAPIView(APIView):
+    permission_classes = [IsAdminRole]
+    """
+    求助地理分布数据：为前端地图/散点图/热力图提供经纬度点位。
+    """
+    def get(self, request):
+        urgency_weight_map = {
+            'low': 1,
+            'medium': 2,
+            'high': 3,
+            'critical': 4,
+        }
+
+        queryset = HelpRequest.objects.exclude(
+            latitude__isnull=True
+        ).exclude(
+            longitude__isnull=True
+        ).select_related('resident').order_by('-created_at')[:500]
+
+        data = []
+        for item in queryset:
+            data.append({
+                'id': item.id,
+                'resident_name': item.resident.username,
+                'request_type': item.request_type,
+                'request_type_display': item.get_request_type_display(),
+                'urgency': item.urgency,
+                'urgency_display': item.get_urgency_display(),
+                'urgency_weight': urgency_weight_map.get(item.urgency, 1),
+                'status': item.status,
+                'status_display': item.get_status_display(),
+                'description': item.description,
+                'address': item.address,
+                'latitude': float(item.latitude),
+                'longitude': float(item.longitude),
+                'created_at': item.created_at,
+            })
+
+        return Response(data)
+
+
+
+def build_disaster_heat_count(help_request):
+    """
+    将求助紧急程度转换为热力强度。
+    强度越高，前端热力图颜色越明显。
+    """
+    urgency_weight_map = {
+        'low': 30,
+        'medium': 55,
+        'high': 80,
+        'critical': 100,
+    }
+
+    status_decay_map = {
+        'pending': 1.0,
+        'assigned': 0.85,
+        'processing': 0.7,
+        'completed': 0.35,
+        'cancelled': 0.2,
+    }
+
+    base = urgency_weight_map.get(help_request.urgency, 50)
+    decay = status_decay_map.get(help_request.status, 1.0)
+    return round(base * decay, 2)
+
+
+class DisasterHeatmapAPIView(APIView):
+    permission_classes = [IsAdminRole]
+    """
+    灾害/求助发生热力图数据。
+    基于 HelpRequest 经纬度生成，紧急程度越高、越未处理，热力越强。
+    """
+    def get(self, request):
+        queryset = HelpRequest.objects.exclude(
+            latitude__isnull=True
+        ).exclude(
+            longitude__isnull=True
+        ).select_related('resident').order_by('-created_at')[:1000]
+
+        data = []
+        for item in queryset:
+            data.append({
+                'id': item.id,
+                'longitude': float(item.longitude),
+                'latitude': float(item.latitude),
+                'count': build_disaster_heat_count(item),
+                'resident_name': item.resident.username,
+                'request_type': item.request_type,
+                'request_type_display': item.get_request_type_display(),
+                'urgency': item.urgency,
+                'urgency_display': item.get_urgency_display(),
+                'status': item.status,
+                'status_display': item.get_status_display(),
+                'address': item.address,
+                'description': item.description,
+                'created_at': item.created_at,
+            })
+
+        return Response(data)
+
+
+class VolunteerHeatmapAPIView(APIView):
+    permission_classes = [IsAdminRole]
+    """
+    志愿者位置热力图数据。
+    基于 UserProfile 当前经纬度生成，可用志愿者热力更强。
+    """
+    def get(self, request):
+        queryset = UserProfile.objects.filter(
+            role='volunteer'
+        ).exclude(
+            current_latitude__isnull=True
+        ).exclude(
+            current_longitude__isnull=True
+        ).select_related('user').order_by('-location_updated_at')[:1000]
+
+        data = []
+        for profile in queryset:
+            data.append({
+                'id': profile.id,
+                'user_id': profile.user_id,
+                'name': profile.user.username,
+                'phone': profile.phone,
+                'community': profile.community,
+                'address': profile.address,
+                'longitude': float(profile.current_longitude),
+                'latitude': float(profile.current_latitude),
+                'count': 85 if profile.is_available else 45,
+                'is_available': profile.is_available,
+                'location_updated_at': profile.location_updated_at,
+            })
+
+        return Response(data)
+
+
+class CommandCenterAPIView(APIView):
+    permission_classes = [IsAdminRole]
+    """一图统管指挥舱数据：高危求助、志愿者、避难点统一输出。"""
+    def get(self, request):
+        help_requests = HelpRequest.objects.exclude(
+            latitude__isnull=True
+        ).exclude(
+            longitude__isnull=True
+        ).select_related('resident').order_by('-created_at')[:300]
+
+        volunteers = UserProfile.objects.filter(
+            role='volunteer'
+        ).exclude(
+            current_latitude__isnull=True
+        ).exclude(
+            current_longitude__isnull=True
+        ).select_related('user').order_by('-location_updated_at')[:300]
+
+        shelters = Shelter.objects.exclude(
+            latitude__isnull=True
+        ).exclude(
+            longitude__isnull=True
+        ).order_by('-is_available', 'name')[:300]
+
+        return Response({
+            'help_requests': [
+                {
+                    'id': item.id,
+                    'resident_name': item.resident.username,
+                    'type': item.request_type,
+                    'type_display': item.get_request_type_display(),
+                    'urgency': item.urgency,
+                    'urgency_display': item.get_urgency_display(),
+                    'status': item.status,
+                    'status_display': item.get_status_display(),
+                    'summary': item.ai_summary,
+                    'description': item.description,
+                    'address': item.address,
+                    'longitude': float(item.longitude),
+                    'latitude': float(item.latitude),
+                    'created_at': item.created_at,
+                } for item in help_requests
+            ],
+            'volunteers': [
+                {
+                    'id': item.user_id,
+                    'profile_id': item.id,
+                    'username': item.user.username,
+                    'phone': item.phone,
+                    'community': item.community,
+                    'skills': item.skills,
+                    'is_available': item.is_available,
+                    'longitude': float(item.current_longitude),
+                    'latitude': float(item.current_latitude),
+                    'location_updated_at': item.location_updated_at,
+                } for item in volunteers
+            ],
+            'shelters': [
+                {
+                    'id': item.id,
+                    'name': item.name,
+                    'address': item.address,
+                    'capacity': item.capacity,
+                    'is_available': item.is_available,
+                    'longitude': float(item.longitude),
+                    'latitude': float(item.latitude),
+                    'contact_phone': item.contact_phone,
+                } for item in shelters
+            ]
+        })

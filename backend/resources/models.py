@@ -90,6 +90,23 @@ class Material(models.Model):
         verbose_name='库存预警值'
     )
 
+    production_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='生产日期'
+    )
+
+    expire_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='过期日期'
+    )
+
+    expiry_warning_days = models.IntegerField(
+        default=30,
+        verbose_name='临期预警天数'
+    )
+
     updated_at = models.DateTimeField(
         auto_now=True,
         verbose_name='更新时间'

@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
-from users.views import RegisterAPIView, LoginAPIView, MeAPIView, UserViewSet
+from users.views import RegisterAPIView, LoginAPIView, MeAPIView, UserViewSet, UpdateMyLocationAPIView
 from alerts.views import WarningViewSet
 from requests_app.views import HelpRequestViewSet
 from tasks.views import VolunteerTaskViewSet
@@ -17,6 +17,10 @@ from analytics.views import (
     WarningTypeStatsAPIView,
     MaterialStockStatsAPIView,
     DailyHelpRequestStatsAPIView,
+    HelpRequestMapDataAPIView,
+    DisasterHeatmapAPIView,
+    VolunteerHeatmapAPIView,
+    CommandCenterAPIView,
 )
 from notifications.views import NotificationViewSet
 
@@ -60,7 +64,12 @@ urlpatterns = [
     path('api/analytics/warning-types/', WarningTypeStatsAPIView.as_view()),
     path('api/analytics/material-stock/', MaterialStockStatsAPIView.as_view()),
     path('api/analytics/daily-requests/', DailyHelpRequestStatsAPIView.as_view()),
+    path('api/analytics/help-request-map/', HelpRequestMapDataAPIView.as_view()),
+    path('api/analytics/disaster-heatmap/', DisasterHeatmapAPIView.as_view()),
+    path('api/analytics/volunteer-heatmap/', VolunteerHeatmapAPIView.as_view()),
+    path('api/analytics/command-center/', CommandCenterAPIView.as_view()),
     path('api/auth/register/', RegisterAPIView.as_view()),
     path('api/auth/login/', LoginAPIView.as_view()),
     path('api/auth/me/', MeAPIView.as_view()),
+    path('api/auth/update-location/', UpdateMyLocationAPIView.as_view()),
 ]

@@ -43,6 +43,35 @@ class UserProfile(models.Model):
         verbose_name='详细地址'
     )
 
+    current_latitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        blank=True,
+        null=True,
+        verbose_name='当前纬度'
+    )
+
+    current_longitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        blank=True,
+        null=True,
+        verbose_name='当前经度'
+    )
+
+    location_updated_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='位置更新时间'
+    )
+
+    skills = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name='擅长任务'
+    )
+
     is_available = models.BooleanField(
         default=True,
         verbose_name='是否空闲'
