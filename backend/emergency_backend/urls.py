@@ -75,3 +75,7 @@ urlpatterns = [
     path('api/auth/emergency/', EmergencyHelpAPIView.as_view()),
     path('api/auth/device-token/', DeviceTokenAPIView.as_view()),
 ]
+
+from django.conf import settings as dj_settings
+from django.conf.urls.static import static as dj_static
+urlpatterns += dj_static(dj_settings.MEDIA_URL, document_root=dj_settings.MEDIA_ROOT)

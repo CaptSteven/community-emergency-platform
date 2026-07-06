@@ -325,22 +325,25 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
             if not volunteer_profile.is_available:
                 return Response({'message': '该志愿者当前不可用'}, status=status.HTTP_400_BAD_REQUEST)
 
+            now = timezone.now()
+            # 强制分配：管理员派单后任务直接进入处理中，志愿者无需再接单
             if reusable_open_task:
                 task = existing_task
                 task.volunteer = volunteer
-                task.status = 'assigned'
+                task.status = 'processing'
                 task.feedback = ''
-                task.accepted_at = None
+                task.accepted_at = now
                 task.completed_at = None
                 task.save(update_fields=['volunteer', 'status', 'feedback', 'accepted_at', 'completed_at'])
             else:
                 task = VolunteerTask.objects.create(
                     help_request=help_request,
                     volunteer=volunteer,
-                    status='assigned'
+                    status='processing',
+                    accepted_at=now
                 )
 
-            help_request.status = 'assigned'
+            help_request.status = 'processing'
             help_request.save(update_fields=['status', 'updated_at'])
 
             volunteer_profile.is_available = False
@@ -348,8 +351,8 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
 
             create_notification(
                 recipient=volunteer,
-                title='新的救助任务',
-                content=f'你收到一条新的救助任务：{help_request.ai_summary or help_request.description}',
+                title='任务已指派',
+                content=f'你已被指派一项救助任务，请立即前往处理：{help_request.ai_summary or help_request.description}',
                 category='task',
                 related_type='task',
                 related_id=task.id
@@ -428,3 +431,56 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
             'message': '求助已取消',
             'help_request': HelpRequestSerializer(help_request).data
         })
+
+    @action(detail=True, methods=['post'], url_path='confirm-complete')
+    def confirm_complete(self, request, pk=None):
+        """求助者(居民)拍照确认任务完成：需 multipart 上传 photo 文件。"""
+        help_request = self.get_object()
+        user = request.user
+        profile = getattr(user, 'profile', None)
+        is_admin = user.is_superuser or user.is_staff or (profile and profile.role == 'admin')
+        is_owner = help_request.resident == user
+
+        if not is_admin and not is_owner:
+            return Response({'message': '只有求助者本人可以确认完成'}, status=status.HTTP_403_FORBIDDEN)
+
+        if help_request.status in ['completed', 'cancelled']:
+            return Response({'message': '该求助已完成或已取消，无需重复确认'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if help_request.status not in ['processing', 'assigned']:
+            return Response({'message': '只有处理中的求助才能确认完成'}, status=status.HTTP_400_BAD_REQUEST)
+
+        photo = request.FILES.get('photo')
+        if photo is None:
+            return Response({'message': '请拍照上传完成凭证后再确认'}, status=status.HTTP_400_BAD_REQUEST)
+
+        now = timezone.now()
+        with transaction.atomic():
+            help_request.completion_photo = photo
+            help_request.status = 'completed'
+            help_request.completed_at = now
+            help_request.save(update_fields=['completion_photo', 'status', 'completed_at', 'updated_at'])
+
+            task = VolunteerTask.objects.filter(help_request=help_request).first()
+            if task is not None:
+                task.status = 'completed'
+                task.completed_at = now
+                task.save(update_fields=['status', 'completed_at'])
+                if task.volunteer and hasattr(task.volunteer, 'profile'):
+                    task.volunteer.profile.is_available = True
+                    task.volunteer.profile.save(update_fields=['is_available'])
+
+        if task is not None and task.volunteer is not None:
+            create_notification(
+                recipient=task.volunteer,
+                title='求助者已确认完成',
+                content=f'{help_request.resident.username} 已拍照确认求助完成，任务结束。',
+                category='task',
+                related_type='task',
+                related_id=task.id
+            )
+
+        return Response({
+            'message': '已确认完成，感谢反馈',
+            'help_request': HelpRequestSerializer(help_request, context={'request': request}).data
+        }, status=status.HTTP_200_OK)

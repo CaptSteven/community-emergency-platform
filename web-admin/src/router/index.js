@@ -9,6 +9,7 @@ import HelpRequestView from '../views/HelpRequestView.vue'
 import TaskView from '../views/TaskView.vue'
 import ResourceView from '../views/ResourceView.vue'
 import NotificationView from '../views/NotificationView.vue'
+import UserView from '../views/UserView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -52,6 +53,10 @@ const router = createRouter({
         {
           path: 'notifications',
           component: NotificationView
+        },
+        {
+          path: 'users',
+          component: UserView
         }
       ]
     }

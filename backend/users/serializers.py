@@ -158,3 +158,73 @@ class UserLocationUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('经度必须在 -180 到 180 之间')
 
         return attrs
+
+
+class UserAdminSerializer(serializers.ModelSerializer):
+    """管理员用户管理：创建/编辑用户与角色（志愿者账号仅此处开通）。"""
+    role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    community = serializers.CharField(required=False, allow_blank=True)
+    address = serializers.CharField(required=False, allow_blank=True)
+    skills = serializers.CharField(required=False, allow_blank=True)
+    password = serializers.CharField(write_only=True, min_length=6, required=False, allow_blank=True)
+    role_display = serializers.CharField(source='profile.get_role_display', read_only=True)
+    is_available = serializers.BooleanField(source='profile.is_available', read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'password', 'email',
+            'role', 'role_display', 'phone', 'community', 'address', 'skills', 'is_available',
+        ]
+
+    def to_representation(self, instance):
+        # 输出统一走 UserListSerializer，避免写入字段(role/phone 等)在输出时找不到 User 属性
+        return UserListSerializer(instance, context=self.context).to_representation(instance)
+
+    def validate_username(self, value):
+        qs = User.objects.filter(username=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError('用户名已存在')
+        return value
+
+    def create(self, validated_data):
+        role = validated_data.pop('role')
+        phone = validated_data.pop('phone', '')
+        community = validated_data.pop('community', '')
+        address = validated_data.pop('address', '')
+        skills = validated_data.pop('skills', '')
+        password = validated_data.pop('password', '')
+        if not password:
+            raise serializers.ValidationError({'password': '新建用户必须设置密码'})
+        user = User.objects.create_user(
+            username=validated_data.get('username'),
+            email=validated_data.get('email', ''),
+            password=password,
+        )
+        UserProfile.objects.create(
+            user=user, role=role, phone=phone,
+            community=community, address=address, skills=skills,
+        )
+        return user
+
+    def update(self, instance, validated_data):
+        role = validated_data.pop('role', None)
+        password = validated_data.pop('password', '')
+        profile = getattr(instance, 'profile', None)
+        for field in ['phone', 'community', 'address', 'skills']:
+            if field in validated_data and profile is not None:
+                setattr(profile, field, validated_data.pop(field))
+        if 'username' in validated_data:
+            instance.username = validated_data['username']
+        instance.email = validated_data.get('email', instance.email)
+        if password:
+            instance.set_password(password)
+        instance.save()
+        if profile is not None:
+            if role is not None:
+                profile.role = role
+            profile.save()
+        return instance

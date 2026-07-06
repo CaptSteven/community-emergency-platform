@@ -16,6 +16,7 @@ from requests_app.models import HelpRequest
 from notifications.utils import create_notification
 from .serializers import (
     UserRegisterSerializer,
+    UserAdminSerializer,
     UserInfoSerializer,
     UserListSerializer,
     UserLocationUpdateSerializer,
@@ -52,7 +53,9 @@ class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        serializer = UserRegisterSerializer(data=request.data)
+        data = request.data.copy()
+        data['role'] = 'resident'  # 自助注册仅限居民；志愿者账号由管理员线下开通
+        serializer = UserRegisterSerializer(data=data)
 
         if serializer.is_valid():
             user = serializer.save()
@@ -201,10 +204,23 @@ class DeviceTokenAPIView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class UserViewSet(viewsets.ReadOnlyModelViewSet):
+class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().select_related('profile')
     serializer_class = UserListSerializer
     permission_classes = [IsAdminRole]
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return UserAdminSerializer
+        return UserListSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_superuser:
+            return Response({'message': '不能删除超级管理员'}, status=status.HTTP_400_BAD_REQUEST)
+        if instance == request.user:
+            return Response({'message': '不能删除当前登录账号'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         user = self.request.user

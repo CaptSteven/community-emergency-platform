@@ -5,6 +5,9 @@ import { WarningItem, HelpRequestItem } from '../model/Models'
 import { Theme } from '../common/Theme'
 import { RedAlertService } from '../common/RedAlertService'
 import { common } from '@kit.AbilityKit'
+import picker from '@ohos.file.picker'
+import fs from '@ohos.file.fs'
+import { BusinessError } from '@ohos.base'
 
 @Entry
 @Component
@@ -72,6 +75,34 @@ struct ResidentHomePage {
       this.loadData()
     } catch (err) {
       promptAction.showToast({ message: '取消失败' })
+    }
+  }
+
+  // 求助者拍照确认任务完成：选取照片 -> 复制到缓存 -> multipart 上传
+  async confirmComplete(id: number) {
+    let context = getContext(this) as common.UIAbilityContext
+    try {
+      let photoPicker = new picker.PhotoViewPicker()
+      let selectOptions = new picker.PhotoSelectOptions()
+      selectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE
+      selectOptions.maxSelectNumber = 1
+      let selectResult = await photoPicker.select(selectOptions)
+      if (selectResult === undefined || selectResult.photoUris.length === 0) {
+        return
+      }
+      let srcUri: string = selectResult.photoUris[0]
+      let cachePath: string = context.cacheDir + '/completion_' + id + '.jpg'
+      let srcFile = fs.openSync(srcUri, fs.OpenMode.READ_ONLY)
+      let dstFile = fs.openSync(cachePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
+      fs.copyFileSync(srcFile.fd, dstFile.fd)
+      fs.closeSync(srcFile)
+      fs.closeSync(dstFile)
+      promptAction.showToast({ message: '正在上传确认凭证...' })
+      await Api.uploadFile(`/help-requests/${id}/confirm-complete/`, cachePath, 'photo')
+      promptAction.showToast({ message: '已确认完成，感谢反馈' })
+      this.loadData()
+    } catch (err) {
+      promptAction.showToast({ message: '确认失败：' + (err as BusinessError).message })
     }
   }
 
@@ -370,6 +401,20 @@ struct ResidentHomePage {
                   .margin({ top: 14 })
                   .onClick(() => {
                     this.cancelRequest(item.id)
+                  })
+              }
+
+              if (item.status === 'processing') {
+                Button('📷 拍照确认完成')
+                  .width('100%')
+                  .height(40)
+                  .fontSize(15)
+                  .fontColor(Color.White)
+                  .backgroundColor(Theme.SUCCESS)
+                  .borderRadius(Theme.RADIUS_SM)
+                  .margin({ top: 14 })
+                  .onClick(() => {
+                    this.confirmComplete(item.id)
                   })
               }
             }

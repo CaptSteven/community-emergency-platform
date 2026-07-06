@@ -1,7 +1,6 @@
 import router from '@ohos.router'
 import promptAction from '@ohos.promptAction'
 import { BusinessError, AsyncCallback } from '@ohos.base'
-import { common, Want } from '@kit.AbilityKit'
 import { Api } from '../common/Api'
 import { LocationService } from '../common/LocationService'
 import { ShelterItem, LocationResult } from '../model/Models'
@@ -16,6 +15,15 @@ interface ShelterRouteParams {
   focusLng: number
   focusTitle: string
   focusAddress: string
+}
+
+// 百度路线导航参数：起点(当前定位) → 终点(避难所坐标)
+interface RouteNaviParams {
+  oLat: number
+  oLng: number
+  dLat: number
+  dLng: number
+  destName: string
 }
 
 // 判断路由参数中是否携带有效经纬度
@@ -152,25 +160,25 @@ struct NearbyShelterPage {
   }
 
   // “导航”：优先拉起手机地图应用（花瓣地图）进行路线导航；
-  // 无可用地图应用（如模拟器）时降级为坐标弹窗。
-  openNavigation(item: ShelterItem): void {
-    let context = getContext(this) as common.UIAbilityContext
-    let want: Want = {
-      action: 'ohos.want.action.viewData',
-      entities: ['entity.system.browsable'],
-      uri: `petalmaps://navigation?daddr=${item.latitude},${item.longitude}&type=drive`
+  // 打开应用内百度地图路线页：起点=当前定位，终点=避难所坐标
+  async openNavigation(item: ShelterItem): Promise<void> {
+    let oLat: number = this.centerLat
+    let oLng: number = this.centerLng
+    try {
+      let loc: LocationResult = await LocationService.getCurrentLocation()
+      oLat = loc.latitude
+      oLng = loc.longitude
+    } catch (err) {
+      // 定位失败则用当前地图中心作为起点
     }
-    context.startAbility(want).catch((err: BusinessError) => {
-      AlertDialog.show({
-        title: `导航到 ${item.name}`,
-        message: `地址：${item.address}\n坐标：${item.latitude}, ${item.longitude}\n\n未检测到可用的地图应用，请在系统地图中按坐标前往。`,
-        confirm: {
-          value: '知道了',
-          action: () => {
-          }
-        }
-      })
-    })
+    let params: RouteNaviParams = {
+      oLat: oLat,
+      oLng: oLng,
+      dLat: Number(item.latitude),
+      dLng: Number(item.longitude),
+      destName: item.name
+    }
+    router.pushUrl({ url: 'pages/RouteNaviPage', params: params })
   }
 
   @Builder

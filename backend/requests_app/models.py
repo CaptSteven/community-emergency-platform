@@ -107,6 +107,13 @@ class HelpRequest(models.Model):
         verbose_name='完成时间'
     )
 
+    completion_photo = models.FileField(
+        upload_to='completions/',
+        null=True,
+        blank=True,
+        verbose_name='完成确认照片'
+    )
+
     def __str__(self):
         return f'{self.resident.username} - {self.get_request_type_display()} - {self.get_status_display()}'
 

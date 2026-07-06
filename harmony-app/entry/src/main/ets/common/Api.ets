@@ -102,6 +102,52 @@ export class Api {
     return await Api.request<T>(path, http.RequestMethod.PUT, data)
   }
 
+  // 上传本地文件(multipart/form-data)：用于求助者拍照确认完成
+  static async uploadFile(path: string, filePath: string, fieldName: string): Promise<Object> {
+    let httpRequest = http.createHttp()
+    let headers: Record<string, string> = {}
+    if (Session.token !== '') {
+      headers['Authorization'] = `Token ${Session.token}`
+    }
+    let formItem: http.MultiFormData = {
+      name: fieldName,
+      contentType: 'image/jpeg',
+      remoteFileName: 'proof.jpg',
+      filePath: filePath
+    }
+    let options: http.HttpRequestOptions = {
+      method: http.RequestMethod.POST,
+      header: headers,
+      multiFormDataList: [formItem],
+      expectDataType: http.HttpDataType.STRING,
+      connectTimeout: 15000,
+      readTimeout: 30000
+    }
+    try {
+      let response = await httpRequest.request(Api.BASE_URL + path, options)
+      let statusCode = response.responseCode as number
+      let resultText = response.result as string
+      if (statusCode < 200 || statusCode >= 300) {
+        let errorMessage: string = resultText
+        try {
+          let errorData = JSON.parse(resultText) as Record<string, Object>
+          if (errorData['message']) {
+            errorMessage = errorData['message'] as string
+          }
+        } catch (parseError) {
+        }
+        throw new Error(errorMessage)
+      }
+      if (resultText === '' || resultText === undefined) {
+        let empty: EmptyPayload = {}
+        return empty
+      }
+      return JSON.parse(resultText) as Object
+    } finally {
+      httpRequest.destroy()
+    }
+  }
+
   static async request<T>(
     path: string,
     method: http.RequestMethod,

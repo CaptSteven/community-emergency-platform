@@ -28,6 +28,7 @@ class HelpRequestSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'completed_at',
+            'completion_photo',
         ]
 
         read_only_fields = [
@@ -37,6 +38,7 @@ class HelpRequestSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'completed_at',
+            'completion_photo',
         ]
 
     def validate(self, attrs):

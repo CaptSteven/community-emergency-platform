@@ -3,16 +3,11 @@ import promptAction from '@ohos.promptAction'
 import { Api, Session } from '../common/Api'
 import { LocationService } from '../common/LocationService'
 import { common } from '@kit.AbilityKit'
-import {
-  CompleteTaskPayload,
-  TaskItem,
-  HelpRequestItem,
-  UpdateLocationPayload,
-  LocationResult
-} from '../model/Models'
+import { TaskItem, UpdateLocationPayload, LocationResult } from '../model/Models'
 import { Theme } from '../common/Theme'
 import { RedAlertService } from '../common/RedAlertService'
 
+// 跳转附近避难所页携带的目标点参数
 interface ShelterNavParams {
   focusTitle: string
   focusAddress: string
@@ -20,24 +15,30 @@ interface ShelterNavParams {
   focusLng?: number
 }
 
+// 百度路线导航参数：起点(当前定位) → 终点(求助点坐标)
+interface RouteNaviParams {
+  oLat: number
+  oLng: number
+  dLat: number
+  dLng: number
+  destName: string
+}
+
 @Entry
 @Component
 struct VolunteerHomePage {
   @State tasks: TaskItem[] = []
-  @State availableRequests: HelpRequestItem[] = []
   @State loading: boolean = false
-  @State feedback: string = '已完成现场协助处理'
-  @State currentTab: number = 0
   private reportTimer: number = -1
   private redAlertTimer: number = -1
 
   onPageShow() {
-    this.loadAll()
+    this.loadTasks()
     RedAlertService.checkOnce()
   }
 
   aboutToAppear() {
-    this.loadAll()
+    this.loadTasks()
     this.reportLocation()
     this.startRedAlertPolling()
     this.reportTimer = setInterval(() => {
@@ -88,47 +89,15 @@ struct VolunteerHomePage {
     }
   }
 
-  async loadAll() {
+  async loadTasks() {
     this.loading = true
     try {
+      // 志愿者只看管理员指派给自己的任务；强制分配后无需接单/抢单
       this.tasks = await Api.getList<TaskItem>('/tasks/')
-      this.availableRequests = await Api.getList<HelpRequestItem>('/help-requests/?status=pending')
     } catch (err) {
       promptAction.showToast({ message: '加载失败，请检查后端服务' })
     } finally {
       this.loading = false
-    }
-  }
-
-  async claimRequest(id: number) {
-    try {
-      await Api.postEmpty(`/help-requests/${id}/claim/`)
-      promptAction.showToast({ message: '认领成功，请尽快处理' })
-      this.reportLocation()
-      this.loadAll()
-    } catch (err) {
-      promptAction.showToast({ message: '认领失败：' + (err as Error).message })
-    }
-  }
-
-  async acceptTask(id: number) {
-    try {
-      await Api.postEmpty(`/tasks/${id}/accept/`)
-      promptAction.showToast({ message: '接单成功' })
-      this.loadAll()
-    } catch (err) {
-      promptAction.showToast({ message: '接单失败' })
-    }
-  }
-
-  async completeTask(id: number) {
-    try {
-      let payload: CompleteTaskPayload = { feedback: this.feedback }
-      await Api.post<CompleteTaskPayload>(`/tasks/${id}/complete/`, payload)
-      promptAction.showToast({ message: '任务已完成' })
-      this.loadAll()
-    } catch (err) {
-      promptAction.showToast({ message: '完成任务失败' })
     }
   }
 
@@ -137,49 +106,36 @@ struct VolunteerHomePage {
       focusTitle: item.help_request_type ? item.help_request_type : `任务 #${item.id}`,
       focusAddress: item.help_request_address
     }
-
-    // 后端任务列表已补充求助经纬度；有坐标时按求助点查附近避难所，没有坐标再回退到当前位置。
     if (item.help_request_latitude && item.help_request_longitude) {
       navParams.focusLat = Number(item.help_request_latitude)
       navParams.focusLng = Number(item.help_request_longitude)
     }
-
     router.pushUrl({ url: 'pages/NearbyShelterPage', params: navParams })
   }
 
-  @Builder
-  ClaimCard(item: HelpRequestItem) {
-    Column() {
-      Row() {
-        Text(item.request_type_display)
-          .fontSize(17).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).layoutWeight(1)
-        Text(item.urgency_display)
-          .fontSize(12).fontColor(Color.White)
-          .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-          .backgroundColor(Theme.urgencyColor(item.urgency)).borderRadius(12)
-      }.width('100%')
-
-      Text(item.description)
-        .fontSize(14).fontColor(Theme.TEXT_BODY).lineHeight(21).margin({ top: 10 })
-
-      Row() {
-        Text('📍').fontSize(12)
-        Text(item.address || '-').fontSize(12).fontColor(Theme.TEXT_MUTED).layoutWeight(1).margin({ left: 4 })
-      }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 10 })
-
-      Text(`提交人：${item.resident_name}`)
-        .fontSize(12).fontColor(Theme.TEXT_MUTED).margin({ top: 8 })
-
-      Button('认 领')
-        .width('100%').height(42).fontSize(15).fontWeight(FontWeight.Medium)
-        .fontColor(Color.White).backgroundColor(Theme.DANGER).borderRadius(Theme.RADIUS_SM)
-        .margin({ top: 14 })
-        .onClick(() => { this.claimRequest(item.id) })
+  // 一键百度地图导航：起点=当前定位，终点=求助点坐标
+  async openBaiduNav(item: TaskItem) {
+    if (!item.help_request_latitude || !item.help_request_longitude) {
+      promptAction.showToast({ message: '该求助暂无坐标，无法导航' })
+      return
     }
-    .width('100%').padding(16).alignItems(HorizontalAlign.Start)
-    .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-    .shadow({ radius: 16, color: '#14000000', offsetX: 0, offsetY: 4 })
-    .margin({ bottom: 12 })
+    let oLat: number = 39.9042
+    let oLng: number = 116.4074
+    try {
+      let loc: LocationResult = await LocationService.getCurrentLocation()
+      oLat = loc.latitude
+      oLng = loc.longitude
+    } catch (err) {
+      promptAction.showToast({ message: '定位失败，使用默认起点' })
+    }
+    let params: RouteNaviParams = {
+      oLat: oLat,
+      oLng: oLng,
+      dLat: Number(item.help_request_latitude),
+      dLng: Number(item.help_request_longitude),
+      destName: item.help_request_type ? item.help_request_type : `求助 #${item.help_request}`
+    }
+    router.pushUrl({ url: 'pages/RouteNaviPage', params: params })
   }
 
   @Builder
@@ -205,42 +161,39 @@ struct VolunteerHomePage {
         Text(item.help_request_address || '-').fontSize(12).fontColor(Theme.TEXT_MUTED).layoutWeight(1).margin({ left: 4 })
       }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 10 })
 
+      if (item.help_request_latitude && item.help_request_longitude) {
+        Button('🧭 百度地图导航')
+          .width('100%').height(40).fontSize(14).fontColor(Color.White)
+          .backgroundColor('#2563EB').borderRadius(Theme.RADIUS_SM).margin({ top: 12 })
+          .onClick(() => { this.openBaiduNav(item) })
+      }
+
       if (item.help_request_address) {
-        Button('查看位置 / 导航')
-          .width('100%').height(38).fontSize(14).fontColor(Color.White)
-          .backgroundColor(Theme.PURPLE).borderRadius(Theme.RADIUS_SM).margin({ top: 12 })
+        Button('查看位置 / 附近避难所')
+          .width('100%').height(38).fontSize(14).fontColor(Theme.PRIMARY)
+          .backgroundColor('#EEF2FF').borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
           .onClick(() => { this.viewLocation(item) })
       }
 
-      if (item.feedback) {
+      if (item.status === 'processing' || item.status === 'assigned') {
         Row() {
-          Text('✅').fontSize(12)
-          Text(`反馈：${item.feedback}`).fontSize(12).fontColor(Theme.SUCCESS).layoutWeight(1).margin({ left: 4 })
-        }.width('100%').alignItems(VerticalAlign.Top).padding(10).margin({ top: 12 })
-        .backgroundColor('#F0FDF4').borderRadius(Theme.RADIUS_SM)
+          Text('⏳').fontSize(14)
+          Text('处理中 · 完成后由求助者拍照确认')
+            .fontSize(13).fontColor(Theme.PRIMARY).margin({ left: 6 })
+        }
+        .width('100%').justifyContent(FlexAlign.Center).padding({ top: 10, bottom: 10 }).margin({ top: 12 })
+        .backgroundColor('#EFF6FF').borderRadius(Theme.RADIUS_SM)
       }
 
-      Row() {
-        if (item.status === 'assigned') {
-          Button('接 单')
-            .layoutWeight(1).height(42).fontSize(15).fontWeight(FontWeight.Medium)
-            .fontColor(Color.White).backgroundColor(Theme.PRIMARY).borderRadius(Theme.RADIUS_SM)
-            .onClick(() => { this.acceptTask(item.id) })
+      if (item.status === 'completed') {
+        Row() {
+          Text('🎉').fontSize(14)
+          Text('该任务已完成')
+            .fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ left: 6 })
         }
-        if (item.status === 'processing') {
-          Button('完成任务')
-            .layoutWeight(1).height(42).fontSize(15).fontWeight(FontWeight.Medium)
-            .fontColor(Color.White).backgroundColor(Theme.SUCCESS).borderRadius(Theme.RADIUS_SM)
-            .onClick(() => { this.completeTask(item.id) })
-        }
-        if (item.status === 'completed') {
-          Row() {
-            Text('🎉').fontSize(14)
-            Text('该任务已完成').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ left: 6 })
-          }.width('100%').justifyContent(FlexAlign.Center).padding({ top: 8, bottom: 8 })
-          .backgroundColor('#F0FDF4').borderRadius(Theme.RADIUS_SM)
-        }
-      }.width('100%').margin({ top: 14 })
+        .width('100%').justifyContent(FlexAlign.Center).padding({ top: 8, bottom: 8 }).margin({ top: 12 })
+        .backgroundColor('#F0FDF4').borderRadius(Theme.RADIUS_SM)
+      }
     }
     .width('100%').padding(16).alignItems(HorizontalAlign.Start)
     .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
@@ -250,6 +203,7 @@ struct VolunteerHomePage {
 
   build() {
     Column() {
+      // 顶部渐变头部
       Row() {
         Column() {
           Row() {
@@ -271,74 +225,46 @@ struct VolunteerHomePage {
           .borderRadius(Theme.RADIUS_SM)
           .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
       }
-      .width('100%').padding({ left: 20, right: 20, top: 22, bottom: 26 })
-      .alignItems(VerticalAlign.Center)
+      .width('100%').padding({ left: 20, right: 20, top: 22, bottom: 26 }).alignItems(VerticalAlign.Center)
       .linearGradient({
         angle: 145,
         colors: [[Theme.PRIMARY_LIGHT, 0.0], [Theme.PRIMARY, 0.55], [Theme.PRIMARY_DARK, 1.0]]
       }).borderRadius({ bottomLeft: 28, bottomRight: 28 })
 
+      // 说明 + 刷新卡片
       Column() {
-        Text('完成反馈').fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ bottom: 8 })
-        TextInput({ placeholder: '完成任务时的反馈内容', text: this.feedback })
-          .height(46).fontSize(14).backgroundColor('#F8FAFC').borderRadius(Theme.RADIUS_SM)
-          .border({ width: 1, color: Theme.BORDER }).padding({ left: 12, right: 12 })
-          .onChange((value: string) => { this.feedback = value })
-        Button(this.loading ? '刷新中...' : '刷新')
-          .width('100%').height(44).fontSize(15).fontWeight(FontWeight.Medium)
+        Row() {
+          Text('📋').fontSize(16)
+          Text('我的任务由管理员统一指派')
+            .fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).layoutWeight(1).margin({ left: 8 })
+          Text(`${this.tasks.length}`).fontSize(14).fontColor(Theme.TEXT_MUTED)
+        }.width('100%').alignItems(VerticalAlign.Center)
+
+        Button(this.loading ? '刷新中...' : '刷新任务')
+          .width('100%').height(42).fontSize(15).fontWeight(FontWeight.Medium)
           .fontColor(Color.White).borderRadius(Theme.RADIUS_SM)
           .linearGradient({ angle: 90, colors: [[Theme.PRIMARY_LIGHT, 0.0], [Theme.PRIMARY_DARK, 1.0]] })
           .margin({ top: 12 })
-          .onClick(() => { this.loadAll() })
+          .onClick(() => { this.loadTasks() })
       }
       .width('90%').padding(16).margin({ top: -16 }).alignItems(HorizontalAlign.Start)
       .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
       .shadow({ radius: 16, color: '#14000000', offsetX: 0, offsetY: 4 })
 
-      Row() {
-        Text(`可认领求助 (${this.availableRequests.length})`)
-          .fontSize(15).fontWeight(this.currentTab === 0 ? FontWeight.Bold : FontWeight.Medium)
-          .fontColor(this.currentTab === 0 ? Color.White : Theme.TEXT_BODY)
-          .layoutWeight(1).height(38).textAlign(TextAlign.Center)
-          .backgroundColor(this.currentTab === 0 ? Theme.DANGER : '#F1F5F9').borderRadius(Theme.RADIUS_SM)
-          .onClick(() => { this.currentTab = 0 })
-        Blank().width(8)
-        Text(`我的任务 (${this.tasks.length})`)
-          .fontSize(15).fontWeight(this.currentTab === 1 ? FontWeight.Bold : FontWeight.Medium)
-          .fontColor(this.currentTab === 1 ? Color.White : Theme.TEXT_BODY)
-          .layoutWeight(1).height(38).textAlign(TextAlign.Center)
-          .backgroundColor(this.currentTab === 1 ? Theme.PRIMARY : '#F1F5F9').borderRadius(Theme.RADIUS_SM)
-          .onClick(() => { this.currentTab = 1 })
-      }.width('90%').margin({ top: 14 })
-
-      if (this.currentTab === 0) {
-        if (this.availableRequests.length === 0) {
-          Column() {
-            Text('📭').fontSize(52).margin({ bottom: 12 })
-            Text('暂无可认领的求助').fontSize(15).fontColor(Theme.TEXT_BODY)
-            Text('居民提交新求助后会出现在这里').fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
-          }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-        } else {
-          List() {
-            ForEach(this.availableRequests, (item: HelpRequestItem) => {
-              ListItem() { this.ClaimCard(item) }
-            }, (item: HelpRequestItem) => `claim-${item.id}`)
-          }.layoutWeight(1).width('100%').padding({ left: 16, right: 16, top: 12 }).scrollBar(BarState.Off)
+      // 任务列表
+      if (this.tasks.length === 0) {
+        Column() {
+          Text('📭').fontSize(52).margin({ bottom: 12 })
+          Text('暂无指派给你的任务').fontSize(15).fontColor(Theme.TEXT_BODY)
+          Text('等待管理员分配任务').fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
         }
+        .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
       } else {
-        if (this.tasks.length === 0) {
-          Column() {
-            Text('📭').fontSize(52).margin({ bottom: 12 })
-            Text('暂无任务').fontSize(15).fontColor(Theme.TEXT_BODY)
-            Text('认领求助或等待管理员分配').fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
-          }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-        } else {
-          List() {
-            ForEach(this.tasks, (item: TaskItem) => {
-              ListItem() { this.TaskCard(item) }
-            }, (item: TaskItem) => `${item.id}-${item.status}`)
-          }.layoutWeight(1).width('100%').padding({ left: 16, right: 16, top: 12 }).scrollBar(BarState.Off)
-        }
+        List() {
+          ForEach(this.tasks, (item: TaskItem) => {
+            ListItem() { this.TaskCard(item) }
+          }, (item: TaskItem) => `${item.id}-${item.status}`)
+        }.layoutWeight(1).width('100%').padding({ left: 16, right: 16, top: 16 }).scrollBar(BarState.Off)
       }
     }
     .width('100%').height('100%').backgroundColor(Theme.BG)

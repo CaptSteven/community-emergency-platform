@@ -72,7 +72,7 @@
 
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)">{{ row.status_display }}</el-tag>
+            <el-tag :color="statusColor(row.status)" effect="dark" style="border-color: transparent">{{ row.status_display }}</el-tag>
           </template>
         </el-table-column>
 
@@ -321,6 +321,17 @@ const cancelRequest = async row => {
 const formatTime = value => {
   if (!value) return '-'
   return value.replace('T', ' ').slice(0, 19)
+}
+
+const statusColor = status => {
+  const map = {
+    pending: '#E6A23C',
+    assigned: '#409EFF',
+    processing: '#9333EA',
+    completed: '#67C23A',
+    cancelled: '#909399'
+  }
+  return map[status] || '#909399'
 }
 
 const statusTagType = status => {
