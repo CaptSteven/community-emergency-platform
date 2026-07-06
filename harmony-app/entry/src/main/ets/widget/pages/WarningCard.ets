@@ -5,8 +5,8 @@ let storage = new LocalStorage()
 @Entry(storage)
 @Component
 struct WarningCard {
-  @LocalStorageProp('title') title: string = '社区应急预警'
-  @LocalStorageProp('subtitle') subtitle: string = '打开应用查看最新预警'
+  @LocalStorageProp('title') title: string = '社区服务'
+  @LocalStorageProp('subtitle') subtitle: string = '打开应用查看社区上门服务'
 
   build() {
     Column() {

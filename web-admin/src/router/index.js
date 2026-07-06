@@ -3,11 +3,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import MainLayout from '../layout/MainLayout.vue'
 import DashboardView from '../views/DashboardView.vue'
-import CommandCenterView from '../views/CommandCenterView.vue'
-import WarningView from '../views/WarningView.vue'
-import HelpRequestView from '../views/HelpRequestView.vue'
-import TaskView from '../views/TaskView.vue'
-import ResourceView from '../views/ResourceView.vue'
 import NotificationView from '../views/NotificationView.vue'
 import UserView from '../views/UserView.vue'
 import ServiceTypeView from '../views/ServiceTypeView.vue'
@@ -34,10 +29,6 @@ const router = createRouter({
           component: DashboardView
         },
         {
-          path: 'command-center',
-          component: CommandCenterView
-        },
-        {
           path: 'service-types',
           component: ServiceTypeView
         },
@@ -48,22 +39,6 @@ const router = createRouter({
         {
           path: 'service-visits',
           component: ServiceVisitView
-        },
-        {
-          path: 'warnings',
-          component: WarningView
-        },
-        {
-          path: 'help-requests',
-          component: HelpRequestView
-        },
-        {
-          path: 'tasks',
-          component: TaskView
-        },
-        {
-          path: 'resources',
-          component: ResourceView
         },
         {
           path: 'notifications',

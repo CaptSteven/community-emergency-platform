@@ -2,9 +2,9 @@
   <div class="page-container dashboard-page">
     <div class="page-header">
       <div>
-        <div class="page-title">数据可视化大屏</div>
+        <div class="page-title">社区服务数据大屏</div>
         <div class="page-subtitle">
-          汇总社区求助、志愿者任务、灾害预警和应急资源数据，辅助管理员快速研判。
+          社区周期服务运行概览
         </div>
       </div>
 
@@ -24,56 +24,18 @@
     </div>
 
     <el-alert
-      v-if="overview.critical_pending_request_count > 0"
+      v-if="serviceOverview.unassigned_visits > 0"
       class="dashboard-alert"
       type="warning"
       show-icon
       :closable="false"
-      :title="`当前有 ${overview.critical_pending_request_count} 条高优先级待处理求助，请尽快分配志愿者。`"
+      :title="`当前有 ${serviceOverview.unassigned_visits} 个上门工单尚未派单，请尽快安排志愿者。`"
     />
 
-    <div class="section-title">应急求助概览</div>
-    <el-row :gutter="18">
-      <el-col :span="6">
-        <div class="stat-card">
-          <div class="stat-icon">📊</div>
-          <div class="stat-label">总求助数</div>
-          <div class="stat-value">{{ overview.help_request_count || 0 }}</div>
-          <div class="stat-desc">社区居民累计求助</div>
-        </div>
-      </el-col>
-
-      <el-col :span="6">
-        <div class="stat-card warning">
-          <div class="stat-icon">⏳</div>
-          <div class="stat-label">待处理求助</div>
-          <div class="stat-value">{{ overview.pending_request_count || 0 }}</div>
-          <div class="stat-desc">需要管理员尽快分配</div>
-        </div>
-      </el-col>
-
-      <el-col :span="6">
-        <div class="stat-card success">
-          <div class="stat-icon">🆕</div>
-          <div class="stat-label">今日新增求助</div>
-          <div class="stat-value">{{ overview.today_request_count || 0 }}</div>
-          <div class="stat-desc">当天居民提交数量</div>
-        </div>
-      </el-col>
-
-      <el-col :span="6">
-        <div class="stat-card danger">
-          <div class="stat-icon">🚨</div>
-          <div class="stat-label">高优先级待处理</div>
-          <div class="stat-value">{{ overview.critical_pending_request_count || 0 }}</div>
-          <div class="stat-desc">高/紧急且尚未处理</div>
-        </div>
-      </el-col>
-    </el-row>
-
+    <!-- 服务 KPI 卡片 -->
     <div class="section-title section-title--service">
-      <span class="section-badge">社区服务</span>社区长期服务
-      <span class="section-sub">日常上门服务与居家关怀，是平台的主要功能</span>
+      <span class="section-badge">社区服务</span>周期服务运行指标
+      <span class="section-sub">日常上门服务与居家关怀的整体运行情况</span>
     </div>
     <el-row :gutter="18" class="service-kpi-row">
       <el-col :span="6">
@@ -85,19 +47,19 @@
         </div>
       </el-col>
       <el-col :span="6">
+        <div class="stat-card service-card cyan">
+          <div class="stat-icon">📋</div>
+          <div class="stat-label">服务目录种类</div>
+          <div class="stat-value">{{ serviceOverview.service_types || 0 }}</div>
+          <div class="stat-desc">可预约的服务类型</div>
+        </div>
+      </el-col>
+      <el-col :span="6">
         <div class="stat-card service-card success">
           <div class="stat-icon">🚪</div>
           <div class="stat-label">本周上门工单</div>
           <div class="stat-value">{{ serviceOverview.visits_this_week || 0 }}</div>
           <div class="stat-desc">已完成 {{ serviceOverview.completed_this_week || 0 }} 单</div>
-        </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-card service-card warning">
-          <div class="stat-icon">🔧</div>
-          <div class="stat-label">进行中工单</div>
-          <div class="stat-value">{{ serviceOverview.pending_visits || 0 }}</div>
-          <div class="stat-desc">已排班 / 服务中</div>
         </div>
       </el-col>
       <el-col :span="6">
@@ -110,126 +72,115 @@
       </el-col>
     </el-row>
 
-    <div class="section-title">运行状态与资源</div>
+    <div class="section-title">工单累计与进度</div>
     <el-row :gutter="18" class="summary-row">
+      <el-col :span="6">
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-label">累计工单</div>
+          <div class="stat-value">{{ serviceOverview.visits_total || 0 }}</div>
+          <div class="stat-desc">平台生成的全部上门工单</div>
+        </div>
+      </el-col>
       <el-col :span="6">
         <div class="stat-card purple">
           <div class="stat-icon">✅</div>
-          <div class="stat-label">任务完成率</div>
-          <div class="stat-value">{{ overview.task_completion_rate || 0 }}%</div>
-          <div class="stat-desc">志愿者任务闭环情况</div>
+          <div class="stat-label">已完成工单</div>
+          <div class="stat-value">{{ serviceOverview.visits_completed || 0 }}</div>
+          <div class="stat-desc">完成率 {{ completionRate }}%</div>
         </div>
       </el-col>
-
       <el-col :span="6">
-        <div class="stat-card cyan">
-          <div class="stat-icon">⚠️</div>
-          <div class="stat-label">生效预警</div>
-          <div class="stat-value">{{ overview.active_warning_count || 0 }}</div>
-          <div class="stat-desc">当前仍在生效的灾害预警</div>
+        <div class="stat-card warning">
+          <div class="stat-icon">🔧</div>
+          <div class="stat-label">进行中工单</div>
+          <div class="stat-value">{{ serviceOverview.pending_visits || 0 }}</div>
+          <div class="stat-desc">已排班 / 服务中</div>
         </div>
       </el-col>
-
       <el-col :span="6">
         <div class="stat-card green">
-          <div class="stat-icon">🙋</div>
-          <div class="stat-label">可用志愿者</div>
-          <div class="stat-value">{{ overview.available_volunteer_count || 0 }}</div>
-          <div class="stat-desc">当前可被分配任务</div>
-        </div>
-      </el-col>
-
-      <el-col :span="6">
-        <div class="stat-card red">
-          <div class="stat-icon">📦</div>
-          <div class="stat-label">低库存物资</div>
-          <div class="stat-value">{{ overview.low_stock_material_count || 0 }}</div>
-          <div class="stat-desc">库存低于预警阈值</div>
+          <div class="stat-icon">🗓️</div>
+          <div class="stat-label">本周完成</div>
+          <div class="stat-value">{{ serviceOverview.completed_this_week || 0 }}</div>
+          <div class="stat-desc">近 7 日已完成上门</div>
         </div>
       </el-col>
     </el-row>
 
+    <!-- 图表 -->
     <el-row :gutter="18" class="chart-row">
       <el-col :span="12">
         <div class="card">
-          <div class="card-title">近 7 日求助趋势</div>
-          <div ref="dailyChartRef" class="chart-box"></div>
+          <div class="card-title">各服务类型工单量</div>
+          <div class="card-subtitle">按服务类型统计工单总量与已完成量。</div>
+          <div v-show="serviceTypeStats.length" ref="typeChartRef" class="chart-box"></div>
+          <div v-show="!serviceTypeStats.length" class="empty-box">
+            🗂️
+            <div class="empty-text">暂无服务类型数据，先到「服务目录管理」添加服务吧</div>
+          </div>
         </div>
       </el-col>
 
       <el-col :span="12">
         <div class="card">
-          <div class="card-title">求助状态分布</div>
-          <div ref="statusChartRef" class="chart-box"></div>
+          <div class="card-title">志愿者服务负载排行</div>
+          <div class="card-subtitle">按志愿者统计承接工单总量与完成量（Top 10）。</div>
+          <div v-show="volunteerLoad.length" ref="loadChartRef" class="chart-box"></div>
+          <div v-show="!volunteerLoad.length" class="empty-box">
+            🙋
+            <div class="empty-text">暂无志愿者服务记录</div>
+          </div>
         </div>
       </el-col>
     </el-row>
 
+    <!-- 未来 7 天即将上门 -->
     <el-row :gutter="18" class="chart-row">
-      <el-col :span="12">
+      <el-col :span="24">
         <div class="card">
-          <div class="card-title">求助紧急程度统计</div>
-          <div ref="urgencyChartRef" class="chart-box"></div>
-        </div>
-      </el-col>
-
-      <el-col :span="12">
-        <div class="card">
-          <div class="card-title">任务状态统计</div>
-          <div ref="taskChartRef" class="chart-box"></div>
-        </div>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="18" class="chart-row">
-      <el-col :span="12">
-        <div class="card">
-          <div class="card-title">预警等级统计</div>
-          <div ref="warningChartRef" class="chart-box"></div>
-        </div>
-      </el-col>
-
-      <el-col :span="12">
-        <div class="card">
-          <div class="card-title">应急物资库存</div>
-          <div ref="materialChartRef" class="chart-box"></div>
-        </div>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="18" class="chart-row">
-      <el-col :xs="24" :lg="12">
-        <div class="card">
-          <div class="card-title">求助地理分布地图</div>
-          <div class="card-subtitle">点击地图标记可查看求助详情。</div>
-          <div id="baiduMapContainer" ref="baiduMapRef" class="baidu-map-box"></div>
-        </div>
-      </el-col>
-
-      <el-col :xs="24" :lg="12">
-        <div class="card map-card">
-          <div class="map-card-header">
+          <div class="card-header-row">
             <div>
-              <div class="card-title">应急热力图</div>
+              <div class="card-title">未来 7 天即将上门</div>
               <div class="card-subtitle">
-                当前展示：{{ heatmapType === 'disaster' ? '灾害发生热力' : '志愿者位置热力' }}
+                {{ upcoming.range_start || '' }} ~ {{ upcoming.range_end || '' }}，共 {{ upcoming.count || 0 }} 个待上门工单。
               </div>
             </div>
-
-            <el-radio-group
-              v-model="heatmapType"
-              size="small"
-              @change="handleHeatmapTypeChange"
-            >
-              <el-radio-button label="disaster">灾害热力</el-radio-button>
-              <el-radio-button label="volunteer">志愿者热力</el-radio-button>
-            </el-radio-group>
           </div>
 
-          <div class="heatmap-tip">
-            灾害热力根据求助紧急程度和处理状态计算；志愿者热力根据志愿者当前位置和是否空闲计算。
+          <el-table
+            v-if="upcomingVisits.length"
+            :data="upcomingVisits"
+            stripe
+            style="width: 100%"
+          >
+            <el-table-column label="日期" prop="scheduled_date" width="130" />
+            <el-table-column label="服务类型" min-width="150">
+              <template #default="{ row }">
+                <span class="svc-emoji">{{ row.icon || '🛎️' }}</span>
+                {{ row.service_type }}
+              </template>
+            </el-table-column>
+            <el-table-column label="居民" prop="resident" min-width="110" />
+            <el-table-column label="志愿者" min-width="110">
+              <template #default="{ row }">
+                {{ row.volunteer || '待派单' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="地址" prop="address" min-width="200" show-overflow-tooltip />
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="statusTagType(row.status)" effect="light">
+                  {{ row.status_display }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div v-else class="empty-box empty-box--wide">
+            🎉
+            <div class="empty-text">未来 7 天暂无待上门工单，服务安排一切从容</div>
           </div>
-          <div id="heatMapContainer" ref="heatMapRef" class="baidu-map-box"></div>
         </div>
       </el-col>
     </el-row>
@@ -237,570 +188,172 @@
 </template>
 
 <script setup>
-import { onMounted, onBeforeUnmount, ref, nextTick } from 'vue'
+import { onMounted, onBeforeUnmount, ref, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import request from '../api/request'
 
 const AUTO_REFRESH_INTERVAL = 10000
 
 const loading = ref(false)
-const overview = ref({})
-const serviceOverview = ref({})
 const autoRefresh = ref(true)
 const lastUpdated = ref('')
 
-const dailyChartRef = ref(null)
-const statusChartRef = ref(null)
-const urgencyChartRef = ref(null)
-const taskChartRef = ref(null)
-const warningChartRef = ref(null)
-const materialChartRef = ref(null)
-const baiduMapRef = ref(null)
-const heatMapRef = ref(null)
-const heatmapType = ref('disaster')
+const serviceOverview = ref({})
+const serviceTypeStats = ref([])
+const volunteerLoad = ref([])
+const upcoming = ref({})
 
-let dailyChart = null
-let statusChart = null
-let urgencyChart = null
-let taskChart = null
-let warningChart = null
-let materialChart = null
+const typeChartRef = ref(null)
+const loadChartRef = ref(null)
+
+let typeChart = null
+let loadChart = null
 let refreshTimer = null
 
-const safeArray = data => {
-  return Array.isArray(data) ? data : []
+const safeArray = data => (Array.isArray(data) ? data : [])
+
+// 工单完成率
+const completionRate = computed(() => {
+  const total = serviceOverview.value.visits_total || 0
+  const done = serviceOverview.value.visits_completed || 0
+  if (!total) return 0
+  return Math.round((done / total) * 100)
+})
+
+const upcomingVisits = computed(() => safeArray(upcoming.value.visits))
+
+// 状态标签配色，统一状态色
+const statusTagType = status => {
+  const map = {
+    completed: 'success',
+    processing: 'warning',
+    assigned: 'primary',
+    pending: 'info',
+    unassigned: 'danger',
+    cancelled: 'info'
+  }
+  return map[status] || 'info'
 }
 
 const getChart = (chart, chartRef) => {
-  if (!chartRef.value) {
-    return null
-  }
-
-  if (!chart) {
-    chart = echarts.init(chartRef.value)
-  }
-
+  if (!chartRef.value) return null
+  if (!chart) chart = echarts.init(chartRef.value)
   return chart
 }
 
 const formatDateTime = date => {
   const pad = value => String(value).padStart(2, '0')
-
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
-
-const getHeatmapApiUrl = () => {
-  return heatmapType.value === 'volunteer'
-    ? '/analytics/volunteer-heatmap/'
-    : '/analytics/disaster-heatmap/'
 }
 
 const loadData = async (options = {}) => {
   const silent = options.silent === true
-
-  if (!silent) {
-    loading.value = true
-  }
+  if (!silent) loading.value = true
 
   try {
-    const [
-      overviewData,
-      dailyData,
-      statusData,
-      urgencyData,
-      taskData,
-      warningData,
-      materialData,
-      mapData,
-      heatData,
-      serviceData
-    ] = await Promise.all([
-      request.get('/analytics/overview/'),
-      request.get('/analytics/daily-requests/'),
-      request.get('/analytics/help-request-status/'),
-      request.get('/analytics/help-request-urgency/'),
-      request.get('/analytics/task-status/'),
-      request.get('/analytics/warning-levels/'),
-      request.get('/analytics/material-stock/'),
-      request.get('/analytics/help-request-map/'),
-      request.get(getHeatmapApiUrl()),
-      request.get('/analytics/service-overview/')
+    const [overviewData, typeData, loadData_, upcomingData] = await Promise.all([
+      request.get('/analytics/service-overview/'),
+      request.get('/analytics/service-type-stats/'),
+      request.get('/analytics/volunteer-service-load/'),
+      request.get('/analytics/service-upcoming/')
     ])
 
-    overview.value = overviewData || {}
-    serviceOverview.value = serviceData || {}
+    serviceOverview.value = overviewData || {}
+    serviceTypeStats.value = safeArray(typeData)
+    volunteerLoad.value = safeArray(loadData_)
+    upcoming.value = upcomingData || {}
     lastUpdated.value = formatDateTime(new Date())
 
     await nextTick()
-
-    renderDailyChart(safeArray(dailyData))
-    renderStatusChart(safeArray(statusData))
-    renderUrgencyChart(safeArray(urgencyData))
-    renderTaskChart(safeArray(taskData))
-    renderWarningChart(safeArray(warningData))
-    renderMaterialChart(safeArray(materialData))
-    await renderBaiduMap(safeArray(mapData))
-    await renderHeatMap(safeArray(heatData))
+    renderTypeChart(serviceTypeStats.value)
+    renderLoadChart(volunteerLoad.value)
   } finally {
-    if (!silent) {
-      loading.value = false
-    }
+    if (!silent) loading.value = false
   }
 }
 
-const renderDailyChart = data => {
-  dailyChart = getChart(dailyChart, dailyChartRef)
-  if (!dailyChart) return
+// 各服务类型工单量（总量 vs 完成量）
+const renderTypeChart = data => {
+  typeChart = getChart(typeChart, typeChartRef)
+  if (!typeChart) return
 
-  dailyChart.setOption({
-    tooltip: {
-      trigger: 'axis'
-    },
-    grid: {
-      top: 35,
-      left: 45,
-      right: 25,
-      bottom: 35
-    },
+  const names = data.map(item => `${item.icon || ''} ${item.name}`.trim())
+
+  typeChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    legend: { top: 0 },
+    grid: { top: 40, left: 50, right: 25, bottom: 55 },
     xAxis: {
       type: 'category',
-      data: data.map(item => item.label)
+      data: names,
+      axisLabel: { interval: 0, rotate: names.length > 4 ? 25 : 0 }
     },
-    yAxis: {
-      type: 'value',
-      minInterval: 1
-    },
+    yAxis: { type: 'value', minInterval: 1 },
     series: [
       {
-        name: '求助数量',
-        type: 'line',
-        smooth: true,
-        areaStyle: {},
-        data: data.map(item => item.count)
-      }
-    ]
-  }, true)
-}
-
-const renderStatusChart = data => {
-  statusChart = getChart(statusChart, statusChartRef)
-  if (!statusChart) return
-
-  statusChart.setOption({
-    tooltip: {
-      trigger: 'item'
-    },
-    legend: {
-      bottom: 0
-    },
-    series: [
-      {
-        name: '求助状态',
-        type: 'pie',
-        radius: ['45%', '70%'],
-        center: ['50%', '45%'],
-        data: data.map(item => ({
-          name: item.label,
-          value: item.count
-        }))
-      }
-    ]
-  }, true)
-}
-
-const renderUrgencyChart = data => {
-  urgencyChart = getChart(urgencyChart, urgencyChartRef)
-  if (!urgencyChart) return
-
-  urgencyChart.setOption({
-    tooltip: {
-      trigger: 'axis'
-    },
-    grid: {
-      top: 35,
-      left: 45,
-      right: 25,
-      bottom: 35
-    },
-    xAxis: {
-      type: 'category',
-      data: data.map(item => item.label)
-    },
-    yAxis: {
-      type: 'value',
-      minInterval: 1
-    },
-    series: [
-      {
-        name: '求助数量',
+        name: '工单总量',
         type: 'bar',
-        data: data.map(item => item.count)
-      }
-    ]
-  }, true)
-}
-
-const renderTaskChart = data => {
-  taskChart = getChart(taskChart, taskChartRef)
-  if (!taskChart) return
-
-  taskChart.setOption({
-    tooltip: {
-      trigger: 'item'
-    },
-    legend: {
-      bottom: 0
-    },
-    series: [
+        barMaxWidth: 34,
+        itemStyle: { color: '#2563EB', borderRadius: [6, 6, 0, 0] },
+        data: data.map(item => item.total)
+      },
       {
-        name: '任务状态',
-        type: 'pie',
-        radius: '65%',
-        center: ['50%', '45%'],
-        data: data.map(item => ({
-          name: item.label,
-          value: item.count
-        }))
-      }
-    ]
-  }, true)
-}
-
-const renderWarningChart = data => {
-  warningChart = getChart(warningChart, warningChartRef)
-  if (!warningChart) return
-
-  warningChart.setOption({
-    tooltip: {
-      trigger: 'axis'
-    },
-    grid: {
-      top: 35,
-      left: 45,
-      right: 25,
-      bottom: 35
-    },
-    xAxis: {
-      type: 'category',
-      data: data.map(item => item.label)
-    },
-    yAxis: {
-      type: 'value',
-      minInterval: 1
-    },
-    series: [
-      {
-        name: '预警数量',
+        name: '已完成',
         type: 'bar',
-        data: data.map(item => item.count)
+        barMaxWidth: 34,
+        itemStyle: { color: '#16A34A', borderRadius: [6, 6, 0, 0] },
+        data: data.map(item => item.completed)
       }
     ]
   }, true)
 }
 
-const renderMaterialChart = data => {
-  materialChart = getChart(materialChart, materialChartRef)
-  if (!materialChart) return
+// 志愿者服务负载排行（Top 10 条形图）
+const renderLoadChart = data => {
+  loadChart = getChart(loadChart, loadChartRef)
+  if (!loadChart) return
 
-  materialChart.setOption({
-    tooltip: {
-      trigger: 'axis'
-    },
-    legend: {
-      top: 0
-    },
-    grid: {
-      top: 45,
-      left: 45,
-      right: 25,
-      bottom: 65
-    },
-    xAxis: {
-      type: 'category',
-      data: data.map(item => item.name),
-      axisLabel: {
-        interval: 0,
-        rotate: 30
-      }
-    },
+  // 按总量降序取前 10，条形图从上到下需反转
+  const sorted = [...data].sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 10).reverse()
+
+  loadChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    legend: { top: 0 },
+    grid: { top: 40, left: 80, right: 25, bottom: 25 },
+    xAxis: { type: 'value', minInterval: 1 },
     yAxis: {
-      type: 'value',
-      minInterval: 1
+      type: 'category',
+      data: sorted.map(item => item.volunteer)
     },
     series: [
       {
-        name: '库存数量',
+        name: '承接工单',
         type: 'bar',
-        data: data.map(item => item.quantity)
+        barMaxWidth: 20,
+        itemStyle: { color: '#2563EB', borderRadius: [0, 6, 6, 0] },
+        data: sorted.map(item => item.total)
       },
       {
-        name: '预警值',
-        type: 'line',
-        data: data.map(item => item.warning_quantity)
+        name: '已完成',
+        type: 'bar',
+        barMaxWidth: 20,
+        itemStyle: { color: '#16A34A', borderRadius: [0, 6, 6, 0] },
+        data: sorted.map(item => item.completed)
       }
     ]
   }, true)
-}
-
-let baiduMap = null
-let baiduMapScriptPromise = null
-
-const loadBaiduMapScript = () => {
-  if (window.BMapGL) {
-    return Promise.resolve(window.BMapGL)
-  }
-
-  if (baiduMapScriptPromise) {
-    return baiduMapScriptPromise
-  }
-
-  const ak = import.meta.env.VITE_BAIDU_MAP_AK
-
-  if (!ak) {
-    return Promise.reject(new Error('请先在 web-admin/.env 中配置 VITE_BAIDU_MAP_AK'))
-  }
-
-  baiduMapScriptPromise = new Promise((resolve, reject) => {
-    const callbackName = '__onBaiduMapLoaded'
-
-    window[callbackName] = () => {
-      if (window.BMapGL) {
-        resolve(window.BMapGL)
-      } else {
-        reject(new Error('百度地图加载失败：BMapGL 不存在'))
-      }
-
-      delete window[callbackName]
-    }
-
-    const script = document.createElement('script')
-    script.src = `https://api.map.baidu.com/api?v=1.0&type=webgl&ak=${ak}&callback=${callbackName}`
-    script.onerror = () => reject(new Error('百度地图脚本加载失败'))
-    document.head.appendChild(script)
-  })
-
-  return baiduMapScriptPromise
-}
-
-const renderBaiduMap = async data => {
-  const BMapGL = await loadBaiduMapScript()
-
-  if (!baiduMapRef.value) {
-    return
-  }
-
-  if (!baiduMap) {
-    baiduMap = new BMapGL.Map('baiduMapContainer')
-
-    // 默认中心点：北京。你可以换成你项目所在城市的经纬度
-    const defaultPoint = new BMapGL.Point(116.404, 39.915)
-
-    baiduMap.centerAndZoom(defaultPoint, 12)
-    baiduMap.enableScrollWheelZoom(true)
-    baiduMap.addControl(new BMapGL.ScaleControl())
-    baiduMap.addControl(new BMapGL.ZoomControl())
-  }
-
-  baiduMap.clearOverlays()
-
-  const validData = data.filter(item => item.longitude && item.latitude)
-
-  if (validData.length === 0) {
-    return
-  }
-
-  const points = []
-
-  validData.forEach(item => {
-    const point = new BMapGL.Point(Number(item.longitude), Number(item.latitude))
-    points.push(point)
-
-    const marker = new BMapGL.Marker(point)
-    baiduMap.addOverlay(marker)
-
-    marker.addEventListener('click', () => {
-      const content = `
-        <div style="line-height: 1.8;">
-          <div><strong>求助ID：</strong>${item.id}</div>
-          <div><strong>类型：</strong>${item.request_type_display || '-'}</div>
-          <div><strong>紧急程度：</strong>${item.urgency_display || '-'}</div>
-          <div><strong>状态：</strong>${item.status_display || '-'}</div>
-          <div><strong>地址：</strong>${item.address || '-'}</div>
-          <div><strong>描述：</strong>${item.description || '-'}</div>
-        </div>
-      `
-
-      const infoWindow = new BMapGL.InfoWindow(content, {
-        width: 300,
-        title: '求助详情'
-      })
-
-      baiduMap.openInfoWindow(infoWindow, point)
-    })
-  })
-
-  baiduMap.setViewport(points)
-}
-
-let heatMap = null
-let heatView = null
-let heatLayer = null
-let mapvglScriptPromise = null
-
-const loadMapVglScript = () => {
-  if (window.mapvgl) {
-    return Promise.resolve(window.mapvgl)
-  }
-
-  if (mapvglScriptPromise) {
-    return mapvglScriptPromise
-  }
-
-  mapvglScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = 'https://code.bdstatic.com/npm/mapvgl@1.0.0-beta.189/dist/mapvgl.min.js'
-
-    script.onload = () => {
-      if (window.mapvgl) {
-        resolve(window.mapvgl)
-      } else {
-        reject(new Error('MapVGL 加载失败：window.mapvgl 不存在'))
-      }
-    }
-
-    script.onerror = () => reject(new Error('MapVGL 脚本加载失败'))
-    document.head.appendChild(script)
-  })
-
-  return mapvglScriptPromise
-}
-
-const toHeatmapData = data => {
-  return data
-    .filter(item => item.longitude && item.latitude)
-    .map(item => ({
-      geometry: {
-        type: 'Point',
-        coordinates: [Number(item.longitude), Number(item.latitude)]
-      },
-      properties: {
-        count: Number(item.count || item.urgency_weight || 50)
-      },
-      count: Number(item.count || item.urgency_weight || 50)
-    }))
-}
-
-const getValidMapPoints = (BMapGL, data) => {
-  return data
-    .filter(item => item.longitude && item.latitude)
-    .map(item => new BMapGL.Point(Number(item.longitude), Number(item.latitude)))
-}
-
-const renderHeatMap = async data => {
-  const BMapGL = await loadBaiduMapScript()
-  const mapvgl = await loadMapVglScript()
-
-  if (!heatMapRef.value) {
-    return
-  }
-
-  if (!heatMap) {
-    heatMap = new BMapGL.Map('heatMapContainer')
-    const defaultPoint = new BMapGL.Point(116.404, 39.915)
-
-    heatMap.centerAndZoom(defaultPoint, 12)
-    heatMap.enableScrollWheelZoom(true)
-    heatMap.addControl(new BMapGL.ScaleControl())
-    heatMap.addControl(new BMapGL.ZoomControl())
-
-    heatView = new mapvgl.View({
-      map: heatMap
-    })
-
-    heatLayer = new mapvgl.HeatmapLayer({
-      size: 70,
-      max: 100,
-      min: 0,
-      unit: 'px',
-      height: 0,
-      gradient: {
-        0.0: 'rgba(0, 102, 255, 0.45)',
-        0.35: 'rgba(0, 200, 120, 0.55)',
-        0.65: 'rgba(255, 215, 0, 0.75)',
-        1.0: 'rgba(255, 0, 0, 0.9)'
-      },
-      data: []
-    })
-
-    heatView.addLayer(heatLayer)
-  }
-
-  const heatData = toHeatmapData(data)
-
-  if (typeof heatLayer.setData === 'function') {
-    heatLayer.setData(heatData)
-  } else {
-    if (heatView && heatLayer && typeof heatView.removeLayer === 'function') {
-      heatView.removeLayer(heatLayer)
-    }
-
-    heatLayer = new mapvgl.HeatmapLayer({
-      size: 70,
-      max: 100,
-      min: 0,
-      unit: 'px',
-      height: 0,
-      gradient: {
-        0.0: 'rgba(0, 102, 255, 0.45)',
-        0.35: 'rgba(0, 200, 120, 0.55)',
-        0.65: 'rgba(255, 215, 0, 0.75)',
-        1.0: 'rgba(255, 0, 0, 0.9)'
-      },
-      data: heatData
-    })
-
-    heatView.addLayer(heatLayer)
-  }
-
-  const points = getValidMapPoints(BMapGL, data)
-  if (points.length > 0) {
-    heatMap.setViewport(points)
-  }
-}
-
-const handleHeatmapTypeChange = async () => {
-  try {
-    const heatData = await request.get(getHeatmapApiUrl())
-    await nextTick()
-    await renderHeatMap(safeArray(heatData))
-  } catch (error) {
-    console.error(error)
-  }
 }
 
 const resizeCharts = () => {
-  dailyChart?.resize()
-  statusChart?.resize()
-  urgencyChart?.resize()
-  taskChart?.resize()
-  warningChart?.resize()
-  materialChart?.resize()
+  typeChart?.resize()
+  loadChart?.resize()
 }
 
 const disposeCharts = () => {
-  dailyChart?.dispose()
-  statusChart?.dispose()
-  urgencyChart?.dispose()
-  taskChart?.dispose()
-  warningChart?.dispose()
-  materialChart?.dispose()
-
-  dailyChart = null
-  statusChart = null
-  urgencyChart = null
-  taskChart = null
-  warningChart = null
-  materialChart = null
+  typeChart?.dispose()
+  loadChart?.dispose()
+  typeChart = null
+  loadChart = null
 }
 
 const startAutoRefresh = () => {
@@ -875,14 +428,14 @@ onBeforeUnmount(() => {
   line-height: 1.4;
 }
 
-/* 社区服务分区：作为主功能更突出（绿色强调 + 徽标 + 副标题） */
+/* 社区服务分区：绿色强调 + 徽标 + 副标题 */
 .section-title--service {
   border-left-color: #16a34a;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 28px;
+  margin-top: 8px;
   font-size: 18px;
 }
 
@@ -906,7 +459,6 @@ onBeforeUnmount(() => {
 
 .service-kpi-row {
   margin-bottom: 4px;
-  /* 主功能区块用柔和绿意底衬托，视觉上更突出 */
   padding: 6px;
   border-radius: 18px;
   background: linear-gradient(135deg, rgba(22, 163, 74, 0.06), rgba(37, 99, 235, 0.04));
@@ -929,7 +481,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 16px 34px rgba(37, 99, 235, 0.3);
 }
 
-/* 卡片右上角柔光装饰 */
 .stat-card::after {
   content: "";
   position: absolute;
@@ -941,7 +492,6 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.14);
 }
 
-/* 右上角大号 emoji 图标 */
 .stat-icon {
   position: absolute;
   top: 16px;
@@ -983,12 +533,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 22px rgba(34, 197, 94, 0.26);
 }
 
-.stat-card.red {
-  background: linear-gradient(135deg, #f43f5e, #be123c);
-  box-shadow: 0 8px 22px rgba(244, 63, 94, 0.26);
-}
-
-/* 服务卡片：更高一点、白色描边，强调主功能地位 */
 .service-card {
   min-height: 150px;
   border: 1px solid rgba(255, 255, 255, 0.35);
@@ -1025,49 +569,49 @@ onBeforeUnmount(() => {
 .card-title {
   font-size: 17px;
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .card-subtitle {
-  margin-top: -4px;
   margin-bottom: 12px;
   color: #64748b;
   font-size: 13px;
 }
 
-.map-card {
-  height: 100%;
-}
-
-.map-card-header {
+.card-header-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
 }
 
-.heatmap-tip {
-  margin-top: -4px;
-  margin-bottom: 12px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: #fff7ed;
-  color: #9a3412;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.baidu-map-box {
+.chart-box {
   width: 100%;
-  height: 520px;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #f1f5f9;
+  height: 360px;
 }
 
-@media (max-width: 1200px) {
-  .map-card {
-    margin-top: 18px;
-  }
+.svc-emoji {
+  margin-right: 4px;
+}
+
+/* 空状态：emoji + 引导文案 */
+.empty-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 360px;
+  font-size: 46px;
+  color: #94a3b8;
+}
+
+.empty-box--wide {
+  height: 220px;
+}
+
+.empty-text {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #64748b;
 }
 </style>

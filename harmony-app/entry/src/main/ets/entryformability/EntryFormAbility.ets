@@ -10,13 +10,12 @@ interface WarningCardData {
   subtitle: string
 }
 
-// 服务卡片（Form Kit）：展示最新灾害预警 / 待处理求助提示。
-// 说明：真实数据可在 onUpdateForm 中通过后端接口拉取；此处提供稳健的默认文案，
-// 未接入数据源时卡片仍可正常显示与刷新。
+// 服务卡片（Form Kit）：纯社区服务入口，不展示任何灾害预警内容。
+// 说明：此处提供稳健的静态文案，未接入数据源时卡片仍可正常显示与刷新。
 export default class EntryFormAbility extends FormExtensionAbility {
   private buildData(subtitle: string): formBindingData.FormBindingData {
     let data: WarningCardData = {
-      title: '社区应急预警',
+      title: '社区服务',
       subtitle: subtitle
     }
     return formBindingData.createFormBindingData(data)
@@ -24,7 +23,7 @@ export default class EntryFormAbility extends FormExtensionAbility {
 
   onAddForm(want: Want): formBindingData.FormBindingData {
     hilog.info(DOMAIN, 'testTag', 'form onAddForm')
-    return this.buildData('打开应用查看最新预警与待处理求助')
+    return this.buildData('打开应用查看社区上门服务')
   }
 
   onUpdateForm(formId: string): void {

@@ -17,16 +17,11 @@
         active-text-color="#ffffff"
         class="side-menu"
       >
-        <!-- 总览：数据大屏与一图指挥舱 -->
+        <!-- 总览：社区服务数据大屏 -->
         <el-menu-item-group title="总览">
           <el-menu-item index="/dashboard">
             <span class="menu-emoji">📊</span>
             <span>数据大屏</span>
-          </el-menu-item>
-
-          <el-menu-item index="/command-center">
-            <span class="menu-emoji">🗺️</span>
-            <span>一图指挥舱</span>
           </el-menu-item>
         </el-menu-item-group>
 
@@ -46,33 +41,14 @@
           </el-menu-item>
         </el-menu-item-group>
 
-        <el-menu-item-group title="应急响应">
-          <el-menu-item index="/warnings">
-            <span class="menu-emoji">⚠️</span>
-            <span>灾害预警管理</span>
-          </el-menu-item>
-          <el-menu-item index="/help-requests">
-            <span class="menu-emoji">🆘</span>
-            <span>居民求助管理</span>
-          </el-menu-item>
-          <el-menu-item index="/tasks">
-            <span class="menu-emoji">🧑‍🤝‍🧑</span>
-            <span>志愿者任务管理</span>
-          </el-menu-item>
-          <el-menu-item index="/resources">
-            <span class="menu-emoji">📦</span>
-            <span>应急资源管理</span>
-          </el-menu-item>
-        </el-menu-item-group>
-
         <el-menu-item-group title="系统">
-          <el-menu-item index="/notifications">
-            <span class="menu-emoji">🔔</span>
-            <span>站内消息管理</span>
-          </el-menu-item>
           <el-menu-item index="/users">
             <span class="menu-emoji">👤</span>
             <span>用户管理</span>
+          </el-menu-item>
+          <el-menu-item index="/notifications">
+            <span class="menu-emoji">🔔</span>
+            <span>站内消息管理</span>
           </el-menu-item>
         </el-menu-item-group>
       </el-menu>
@@ -81,7 +57,7 @@
     <el-container>
       <el-header class="header">
         <div class="header-left">
-          基于 HarmonyOS 的社区服务与应急互助平台
+          基于 HarmonyOS 的社区周期服务平台
         </div>
 
         <div class="header-right">
