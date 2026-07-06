@@ -64,3 +64,36 @@ class VolunteerTask(models.Model):
         verbose_name = '志愿者任务'
         verbose_name_plural = '志愿者任务'
         ordering = ['-assigned_at']
+
+
+class TaskCancellation(models.Model):
+    REASON_CHOICES = (
+        ('family', '家庭原因'),
+        ('illness', '生病'),
+        ('distance', '距离过远'),
+        ('work', '工作冲突'),
+        ('emergency', '突发状况'),
+        ('other', '其他'),
+    )
+
+    volunteer = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='task_cancellations', verbose_name='志愿者'
+    )
+    task = models.ForeignKey(
+        VolunteerTask, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cancellations', verbose_name='任务'
+    )
+    help_request = models.ForeignKey(
+        HelpRequest, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='关联求助'
+    )
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES, default='other', verbose_name='取消原因')
+    note = models.TextField(blank=True, default='', verbose_name='补充说明')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='取消时间')
+
+    class Meta:
+        verbose_name = '任务取消记录'
+        verbose_name_plural = '任务取消记录'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.volunteer_id} 取消任务 {self.task_id} - {self.get_reason_display()}'

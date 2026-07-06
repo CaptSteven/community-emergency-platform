@@ -17,7 +17,7 @@
     <div class="command-grid">
       <div class="map-panel card">
         <div class="legend-row">
-          <span><i class="dot red"></i>高危/待处理求助</span>
+          <span>求助点按状态：<i style="display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px 0 8px;vertical-align:middle;background:#ef4444"></i>待处理<i style="display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px 0 8px;vertical-align:middle;background:#f97316"></i>已分配<i style="display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px 0 8px;vertical-align:middle;background:#3b82f6"></i>处理中<i style="display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px 0 8px;vertical-align:middle;background:#22c55e"></i>已完成<i style="display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px 0 8px;vertical-align:middle;background:#94a3b8"></i>已取消</span>
           <span><i class="dot green"></i>空闲志愿者，可拖拽派单</span>
           <span><i class="dot blue"></i>避难点，仅展示/查看，不可派单</span>
         </div>
@@ -117,6 +117,17 @@ const HIT_RADIUS_PX = 90
 const SHELTER_BLOCK_RADIUS_KM = 0.2
 const SHELTER_BLOCK_RADIUS_PX = 76
 const REQUEST_DIRECT_HIT_RADIUS_PX = 45
+
+const statusMarkerColor = status => {
+  const map = {
+    pending: '#ef4444',
+    assigned: '#f97316',
+    processing: '#3b82f6',
+    completed: '#22c55e',
+    cancelled: '#94a3b8'
+  }
+  return map[status] || '#ef4444'
+}
 
 const pendingRequests = computed(() => helpRequests.value.filter(item => item.is_dispatchable === true || (item.status === 'pending' && !item.assigned_volunteer_id)))
 const availableVolunteers = computed(() => volunteers.value.filter(item => item.is_available))
@@ -438,7 +449,7 @@ const handleVolunteerMarkerDropped = async (volunteer, event, marker) => {
 }
 
 const makeRequestMarker = (BMapGL, point, item) => {
-  const color = item.is_dispatchable ? '#ef4444' : '#f97316'
+  const color = statusMarkerColor(item.status)
   const marker = makeStaticMarker(BMapGL, point, '求', color, `
     <div style="line-height:1.8">
       <strong>${item.urgency_display} ${item.type_display}</strong><br/>

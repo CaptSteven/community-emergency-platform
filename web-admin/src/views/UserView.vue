@@ -51,6 +51,17 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column label="本月取消" width="100">
+          <template #default="{ row }">
+            <span
+              v-if="row.role === 'volunteer'"
+              :style="{ color: (row.monthly_cancel_count || 0) > 5 ? '#F56C6C' : '#606266', fontWeight: (row.monthly_cancel_count || 0) > 5 ? 700 : 400 }"
+            >
+              {{ row.monthly_cancel_count || 0 }}<span v-if="(row.monthly_cancel_count || 0) > 5"> ⚠</span>
+            </span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>

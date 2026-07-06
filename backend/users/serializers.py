@@ -116,6 +116,14 @@ class UserListSerializer(serializers.ModelSerializer):
     current_longitude = serializers.DecimalField(source='profile.current_longitude', max_digits=10, decimal_places=7, read_only=True)
     location_updated_at = serializers.DateTimeField(source='profile.location_updated_at', read_only=True)
     is_available = serializers.BooleanField(source='profile.is_available', read_only=True)
+    monthly_cancel_count = serializers.SerializerMethodField()
+
+    def get_monthly_cancel_count(self, obj):
+        from tasks.models import TaskCancellation
+        from django.utils import timezone
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return TaskCancellation.objects.filter(volunteer=obj, created_at__gte=month_start).count()
 
     class Meta:
         model = User
@@ -133,6 +141,7 @@ class UserListSerializer(serializers.ModelSerializer):
             'current_longitude',
             'location_updated_at',
             'is_available',
+            'monthly_cancel_count',
         ]
 
 

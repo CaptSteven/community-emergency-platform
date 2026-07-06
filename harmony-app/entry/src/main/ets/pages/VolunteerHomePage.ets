@@ -24,6 +24,12 @@ interface RouteNaviParams {
   destName: string
 }
 
+// 取消任务请求体
+interface CancelTaskPayload {
+  reason: string
+  note: string
+}
+
 @Entry
 @Component
 struct VolunteerHomePage {
@@ -138,6 +144,47 @@ struct VolunteerHomePage {
     router.pushUrl({ url: 'pages/RouteNaviPage', params: params })
   }
 
+  // 申请取消强制分配的任务：弹原因菜单 -> 上报后端；被撤销资格则登出
+  async applyCancel(item: TaskItem) {
+    let keys: string[] = ['family', 'illness', 'distance', 'work', 'emergency', 'other']
+    let labels: string[] = ['家庭原因', '生病', '距离过远', '工作冲突', '突发状况', '其他']
+    let idx: number = -1
+    try {
+      let res = await promptAction.showActionMenu({
+        title: '选择取消原因',
+        buttons: [
+          { text: '家庭原因', color: '#182431' },
+          { text: '生病', color: '#182431' },
+          { text: '距离过远', color: '#182431' },
+          { text: '工作冲突', color: '#182431' },
+          { text: '突发状况', color: '#182431' },
+          { text: '其他', color: '#182431' }
+        ]
+      })
+      idx = res.index
+    } catch (err) {
+      return
+    }
+    if (idx < 0 || idx >= keys.length) {
+      return
+    }
+    try {
+      let payload: CancelTaskPayload = { reason: keys[idx], note: labels[idx] }
+      let resp = await Api.post<CancelTaskPayload>(`/tasks/${item.id}/cancel/`, payload) as Record<string, Object>
+      let msg: string = resp['message'] !== undefined ? resp['message'] as string : '已申请取消'
+      promptAction.showToast({ message: msg, duration: 3000 })
+      let revoked: boolean = resp['revoked'] as boolean
+      if (revoked === true) {
+        await Session.clear(getContext(this) as common.UIAbilityContext)
+        router.replaceUrl({ url: 'pages/LoginPage' })
+        return
+      }
+      this.loadTasks()
+    } catch (err) {
+      promptAction.showToast({ message: '取消失败：' + (err as Error).message })
+    }
+  }
+
   @Builder
   TaskCard(item: TaskItem) {
     Column() {
@@ -183,6 +230,13 @@ struct VolunteerHomePage {
         }
         .width('100%').justifyContent(FlexAlign.Center).padding({ top: 10, bottom: 10 }).margin({ top: 12 })
         .backgroundColor('#EFF6FF').borderRadius(Theme.RADIUS_SM)
+      }
+
+      if (item.status === 'processing' || item.status === 'assigned') {
+        Button('申请取消任务')
+          .width('100%').height(36).fontSize(13).fontColor('#EF4444')
+          .backgroundColor('#FEF2F2').borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
+          .onClick(() => { this.applyCancel(item) })
       }
 
       if (item.status === 'completed') {

@@ -72,7 +72,7 @@
 
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
-            <el-tag :color="statusColor(row.status)" effect="dark" style="border-color: transparent">{{ row.status_display }}</el-tag>
+            <el-tag :type="statusTagType(row.status)" effect="dark">{{ row.status_display }}</el-tag>
           </template>
         </el-table-column>
 
@@ -336,11 +336,11 @@ const statusColor = status => {
 
 const statusTagType = status => {
   const map = {
-    pending: 'warning',
-    assigned: 'primary',
+    pending: 'info',
+    assigned: 'warning',
     processing: 'primary',
     completed: 'success',
-    cancelled: 'info'
+    cancelled: 'danger'
   }
   return map[status] || 'info'
 }
