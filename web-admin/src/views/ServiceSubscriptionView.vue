@@ -118,7 +118,7 @@ const form = reactive(blank())
 const loadData = async () => {
   loading.value = true
   try {
-    const data = await request.get('/service-subscriptions/')
+    const data = await request.get('/service-subscriptions/', { params: { page_size: 200 } })
     items.value = Array.isArray(data) ? data : (data.results || [])
   } catch (e) { /* 拦截器提示 */ } finally { loading.value = false }
 }
@@ -126,8 +126,8 @@ const loadData = async () => {
 const loadRefs = async () => {
   try {
     const [r, t] = await Promise.all([
-      request.get('/users/', { params: { role: 'resident' } }),
-      request.get('/service-types/', { params: { is_active: true } })
+      request.get('/users/', { params: { role: 'resident', page_size: 200 } }),
+      request.get('/service-types/', { params: { is_active: true, page_size: 200 } })
     ])
     residents.value = Array.isArray(r) ? r : (r.results || [])
     types.value = Array.isArray(t) ? t : (t.results || [])

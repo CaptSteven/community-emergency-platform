@@ -134,7 +134,7 @@ const filters = reactive({ status: '', date: '' })
 const loadData = async () => {
   loading.value = true
   try {
-    const params = {}
+    const params = { page_size: 200 }
     if (filters.status) params.status = filters.status
     if (filters.date) params.scheduled_date = filters.date
     const data = await request.get('/service-visits/', { params })
@@ -144,7 +144,7 @@ const loadData = async () => {
 
 const loadVolunteers = async () => {
   try {
-    const v = await request.get('/users/', { params: { role: 'volunteer' } })
+    const v = await request.get('/users/', { params: { role: 'volunteer', page_size: 200 } })
     volunteers.value = Array.isArray(v) ? v : (v.results || [])
   } catch (e) { /* 拦截器提示 */ }
 }

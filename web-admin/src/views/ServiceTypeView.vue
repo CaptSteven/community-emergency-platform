@@ -115,7 +115,7 @@ const form = reactive(blank())
 const loadData = async () => {
   loading.value = true
   try {
-    const data = await request.get('/service-types/')
+    const data = await request.get('/service-types/', { params: { page_size: 200 } })
     items.value = Array.isArray(data) ? data : (data.results || [])
   } catch (e) { /* 拦截器提示 */ } finally { loading.value = false }
 }

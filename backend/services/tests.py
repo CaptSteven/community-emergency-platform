@@ -255,3 +255,77 @@ class UnifiedCancelControlTests(APITestCase):
         self.assertEqual(results[7].data['monthly_cancel_count'], 8)
         self.vol.refresh_from_db()
         self.assertFalse(self.vol.is_active)
+
+
+class AccessControlHardeningTests(APITestCase):
+    """评审修复回归：工单直连增删改、越权代订、居民自助订阅。"""
+
+    def setUp(self):
+        self.admin = make_user('ac_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('ac_res', 'resident', community=COMMUNITY, address='水磨沟区1号')
+        self.other = make_user('ac_other', 'resident', community=COMMUNITY)
+        self.vol = make_user('ac_vol', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.stype = ServiceType.objects.create(
+            name='健康检查', code='health', required_skill='医疗', needs_health_record=True)
+
+    def _visit(self, volunteer=None, resident=None):
+        return ServiceVisit.objects.create(
+            service_type=self.stype, resident=resident or self.resident,
+            volunteer=volunteer or self.vol, scheduled_date=date.today(), status='assigned')
+
+    # B1: 直接创建工单不再 500，而是 405
+    def test_direct_visit_create_blocked(self):
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-visits/',
+                                {'scheduled_date': str(date.today())}, format='json')
+        self.assertEqual(resp.status_code, 405)
+
+    # B2: 志愿者不能 DELETE 工单绕过取消管控
+    def test_volunteer_cannot_delete_visit(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.delete('/api/service-visits/%d/' % visit.id)
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(ServiceVisit.objects.filter(id=visit.id).exists())
+
+    # B2: 居民不能 PATCH 伪造健康记录
+    def test_resident_cannot_patch_health_record(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.resident)
+        resp = self.client.patch('/api/service-visits/%d/' % visit.id,
+                                 {'systolic': 999}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    # B3: 志愿者不能替他人创建服务计划
+    def test_volunteer_cannot_create_subscription(self):
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-subscriptions/', {
+            'resident': self.resident.id, 'service_type': self.stype.id, 'frequency': 'weekly',
+        }, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    # B3: 居民即使传别人的 resident 也被强制为自己
+    def test_resident_subscription_resident_forced_self(self):
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-subscriptions/', {
+            'resident': self.other.id, 'service_type': self.stype.id, 'frequency': 'weekly',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(ServiceSubscription.objects.get(id=resp.data['id']).resident, self.resident)
+
+    # B6: 居民不传 resident 也能成功自助订阅（App 场景）
+    def test_resident_subscribe_without_resident_field(self):
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-subscriptions/', {
+            'service_type': self.stype.id, 'frequency': 'weekly', 'preferred_weekday': 0,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(ServiceSubscription.objects.get(id=resp.data['id']).resident, self.resident)
+
+    # 管理员不指定 resident 应报 400 而非 500
+    def test_admin_subscription_requires_resident(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-subscriptions/', {
+            'service_type': self.stype.id, 'frequency': 'weekly',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)

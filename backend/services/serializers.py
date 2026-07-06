@@ -38,6 +38,8 @@ class ServiceSubscriptionSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_name', 'created_at',
         ]
         read_only_fields = ['last_generated_date', 'created_by', 'created_at']
+        # resident 由视图层注入：居民自动取本人，管理员需显式指定（在 perform_create 校验）
+        extra_kwargs = {'resident': {'required': False}}
 
 
 class ServiceVisitSerializer(serializers.ModelSerializer):

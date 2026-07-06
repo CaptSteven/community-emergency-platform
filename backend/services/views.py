@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -79,10 +80,16 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         profile = _profile(user)
+        admin = is_admin(user)
+        # 仅管理员或居民本人可创建服务计划（志愿者/其他角色一律拒绝，避免越权代订）
+        if not admin and not (profile and profile.role == 'resident'):
+            raise PermissionDenied('只有管理员或居民本人可以创建服务计划')
         extra = {'created_by': user}
-        # 居民只能为自己订阅
-        if not is_admin(user) and profile and profile.role == 'resident':
+        if not admin:
+            # 非管理员（居民）只能给自己订阅，忽略请求体里的 resident
             extra['resident'] = user
+        elif not serializer.validated_data.get('resident'):
+            raise ValidationError('管理员创建服务计划时必须指定受益居民')
         if not serializer.validated_data.get('start_date'):
             extra['start_date'] = date.today()
         sub = serializer.save(**extra)
@@ -92,6 +99,13 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
             if rp and getattr(rp, 'address', ''):
                 sub.address = rp.address
                 sub.save(update_fields=['address'])
+
+    def perform_update(self, serializer):
+        # 非管理员不能改受益居民（防止把自己的计划改派到他人名下）
+        if is_admin(self.request.user):
+            serializer.save()
+        else:
+            serializer.save(resident=serializer.instance.resident)
 
     @action(detail=False, methods=['post'], url_path='generate-visits')
     def generate_visits(self, request):
@@ -144,6 +158,27 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if profile.role == 'resident':
             return base.filter(resident=user)
         return ServiceVisit.objects.none()
+
+    # 工单只能由系统排班生成、经状态机 action 流转；关闭默认的直接增删改，
+    # 防止志愿者用 DELETE 绕过取消管控、居民用 PATCH 伪造健康记录。
+    def create(self, request, *args, **kwargs):
+        return Response({'message': '上门工单由系统排班生成，不支持直接创建'},
+                        status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def update(self, request, *args, **kwargs):
+        if not is_admin(request.user):
+            return Response({'message': '只有管理员可以修改工单'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if not is_admin(request.user):
+            return Response({'message': '只有管理员可以修改工单'}, status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not is_admin(request.user):
+            return Response({'message': '只有管理员可以删除工单'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
