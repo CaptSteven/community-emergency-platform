@@ -66,6 +66,38 @@
       </el-col>
     </el-row>
 
+    <div class="section-title">社区长期服务</div>
+    <el-row :gutter="18" class="service-kpi-row">
+      <el-col :span="6">
+        <div class="stat-card">
+          <div class="stat-label">生效服务计划</div>
+          <div class="stat-value">{{ serviceOverview.active_subscriptions || 0 }}</div>
+          <div class="stat-desc">覆盖 {{ serviceOverview.covered_residents || 0 }} 位居民</div>
+        </div>
+      </el-col>
+      <el-col :span="6">
+        <div class="stat-card success">
+          <div class="stat-label">本周上门工单</div>
+          <div class="stat-value">{{ serviceOverview.visits_this_week || 0 }}</div>
+          <div class="stat-desc">已完成 {{ serviceOverview.completed_this_week || 0 }} 单</div>
+        </div>
+      </el-col>
+      <el-col :span="6">
+        <div class="stat-card warning">
+          <div class="stat-label">进行中工单</div>
+          <div class="stat-value">{{ serviceOverview.pending_visits || 0 }}</div>
+          <div class="stat-desc">已排班 / 服务中</div>
+        </div>
+      </el-col>
+      <el-col :span="6">
+        <div class="stat-card danger">
+          <div class="stat-label">待人工派单</div>
+          <div class="stat-value">{{ serviceOverview.unassigned_visits || 0 }}</div>
+          <div class="stat-desc">暂无匹配志愿者</div>
+        </div>
+      </el-col>
+    </el-row>
+
     <el-row :gutter="18" class="summary-row">
       <el-col :span="6">
         <div class="stat-card purple">
@@ -196,6 +228,7 @@ const AUTO_REFRESH_INTERVAL = 10000
 
 const loading = ref(false)
 const overview = ref({})
+const serviceOverview = ref({})
 const autoRefresh = ref(true)
 const lastUpdated = ref('')
 
@@ -262,7 +295,8 @@ const loadData = async (options = {}) => {
       warningData,
       materialData,
       mapData,
-      heatData
+      heatData,
+      serviceData
     ] = await Promise.all([
       request.get('/analytics/overview/'),
       request.get('/analytics/daily-requests/'),
@@ -272,10 +306,12 @@ const loadData = async (options = {}) => {
       request.get('/analytics/warning-levels/'),
       request.get('/analytics/material-stock/'),
       request.get('/analytics/help-request-map/'),
-      request.get(getHeatmapApiUrl())
+      request.get(getHeatmapApiUrl()),
+      request.get('/analytics/service-overview/')
     ])
 
     overview.value = overviewData || {}
+    serviceOverview.value = serviceData || {}
     lastUpdated.value = formatDateTime(new Date())
 
     await nextTick()
@@ -810,6 +846,19 @@ onBeforeUnmount(() => {
 
 .summary-row {
   margin-top: 18px;
+}
+
+.section-title {
+  margin: 22px 2px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+  border-left: 4px solid #2563eb;
+  padding-left: 10px;
+}
+
+.service-kpi-row {
+  margin-bottom: 4px;
 }
 
 .stat-card {

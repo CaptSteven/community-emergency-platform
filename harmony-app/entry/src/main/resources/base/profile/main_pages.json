@@ -8,6 +8,8 @@
     "pages/NotificationsPage",
     "pages/NearbyShelterPage",
     "pages/RegisterPage",
-    "pages/RouteNaviPage"
+    "pages/RouteNaviPage",
+    "pages/VolunteerServicePage",
+    "pages/ResidentServicePage"
   ]
 }

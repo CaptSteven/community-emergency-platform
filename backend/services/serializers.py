@@ -1,0 +1,66 @@
+from rest_framework import serializers
+
+from .models import ServiceType, ServiceSubscription, ServiceVisit
+
+
+class ServiceTypeSerializer(serializers.ModelSerializer):
+    default_frequency_display = serializers.CharField(
+        source='get_default_frequency_display', read_only=True
+    )
+
+    class Meta:
+        model = ServiceType
+        fields = [
+            'id', 'name', 'code', 'category', 'description', 'required_skill',
+            'default_frequency', 'default_frequency_display', 'duration_minutes',
+            'needs_health_record', 'icon', 'is_active', 'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+
+class ServiceSubscriptionSerializer(serializers.ModelSerializer):
+    resident_name = serializers.CharField(source='resident.username', read_only=True)
+    service_type_name = serializers.CharField(source='service_type.name', read_only=True)
+    service_type_icon = serializers.CharField(source='service_type.icon', read_only=True)
+    frequency_display = serializers.CharField(source='get_frequency_display', read_only=True)
+    preferred_weekday_display = serializers.CharField(
+        source='get_preferred_weekday_display', read_only=True
+    )
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = ServiceSubscription
+        fields = [
+            'id', 'resident', 'resident_name', 'service_type', 'service_type_name',
+            'service_type_icon', 'frequency', 'frequency_display', 'preferred_weekday',
+            'preferred_weekday_display', 'preferred_time', 'address', 'latitude', 'longitude',
+            'note', 'is_active', 'start_date', 'last_generated_date',
+            'created_by', 'created_by_name', 'created_at',
+        ]
+        read_only_fields = ['last_generated_date', 'created_by', 'created_at']
+
+
+class ServiceVisitSerializer(serializers.ModelSerializer):
+    resident_name = serializers.CharField(source='resident.username', read_only=True)
+    volunteer_name = serializers.CharField(source='volunteer.username', read_only=True)
+    service_type_name = serializers.CharField(source='service_type.name', read_only=True)
+    service_type_icon = serializers.CharField(source='service_type.icon', read_only=True)
+    needs_health_record = serializers.BooleanField(
+        source='service_type.needs_health_record', read_only=True
+    )
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = ServiceVisit
+        fields = [
+            'id', 'subscription', 'service_type', 'service_type_name', 'service_type_icon',
+            'needs_health_record', 'resident', 'resident_name', 'volunteer', 'volunteer_name',
+            'scheduled_date', 'status', 'status_display', 'address', 'latitude', 'longitude',
+            'feedback', 'completion_photo',
+            'systolic', 'diastolic', 'heart_rate', 'temperature', 'health_note',
+            'started_at', 'completed_at', 'created_at',
+        ]
+        read_only_fields = [
+            'service_type', 'resident', 'volunteer', 'status', 'completion_photo',
+            'started_at', 'completed_at', 'created_at',
+        ]

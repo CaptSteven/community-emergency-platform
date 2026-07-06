@@ -2,10 +2,10 @@
   <el-container class="layout-container">
     <el-aside width="230px" class="sidebar">
       <div class="logo">
-        <div class="logo-icon">应</div>
+        <div class="logo-icon">社</div>
         <div>
-          <div class="logo-title">社区应急平台</div>
-          <div class="logo-subtitle">Emergency Admin</div>
+          <div class="logo-title">社区服务平台</div>
+          <div class="logo-subtitle">Community Service Admin</div>
         </div>
       </div>
 
@@ -25,36 +25,48 @@
           <span>一图指挥舱</span>
         </el-menu-item>
 
-        <el-menu-item index="/warnings">
-          <span>灾害预警管理</span>
-        </el-menu-item>
+        <el-menu-item-group title="社区服务">
+          <el-menu-item index="/service-subscriptions">
+            <span>服务计划管理</span>
+          </el-menu-item>
+          <el-menu-item index="/service-visits">
+            <span>排班工单看板</span>
+          </el-menu-item>
+          <el-menu-item index="/service-types">
+            <span>服务目录管理</span>
+          </el-menu-item>
+        </el-menu-item-group>
 
-        <el-menu-item index="/help-requests">
-          <span>居民求助管理</span>
-        </el-menu-item>
+        <el-menu-item-group title="应急响应">
+          <el-menu-item index="/warnings">
+            <span>灾害预警管理</span>
+          </el-menu-item>
+          <el-menu-item index="/help-requests">
+            <span>居民求助管理</span>
+          </el-menu-item>
+          <el-menu-item index="/tasks">
+            <span>志愿者任务管理</span>
+          </el-menu-item>
+          <el-menu-item index="/resources">
+            <span>应急资源管理</span>
+          </el-menu-item>
+        </el-menu-item-group>
 
-        <el-menu-item index="/tasks">
-          <span>志愿者任务管理</span>
-        </el-menu-item>
-
-        <el-menu-item index="/resources">
-          <span>应急资源管理</span>
-        </el-menu-item>
-
-        <el-menu-item index="/notifications">
-          <span>站内消息管理</span>
-        </el-menu-item>
-
-        <el-menu-item index="/users">
-          <span>用户管理</span>
-        </el-menu-item>
+        <el-menu-item-group title="系统">
+          <el-menu-item index="/notifications">
+            <span>站内消息管理</span>
+          </el-menu-item>
+          <el-menu-item index="/users">
+            <span>用户管理</span>
+          </el-menu-item>
+        </el-menu-item-group>
       </el-menu>
     </el-aside>
 
     <el-container>
       <el-header class="header">
         <div class="header-left">
-          基于 HarmonyOS 的社区应急互助与灾害预警服务平台
+          基于 HarmonyOS 的社区服务与应急互助平台
         </div>
 
         <div class="header-right">

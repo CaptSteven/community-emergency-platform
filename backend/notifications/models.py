@@ -7,6 +7,7 @@ class Notification(models.Model):
         ('warning', '灾害预警'),
         ('help_request', '居民求助'),
         ('task', '志愿者任务'),
+        ('service', '社区服务'),
         ('system', '系统消息'),
     )
 

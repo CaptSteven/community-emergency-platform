@@ -10,6 +10,9 @@ import TaskView from '../views/TaskView.vue'
 import ResourceView from '../views/ResourceView.vue'
 import NotificationView from '../views/NotificationView.vue'
 import UserView from '../views/UserView.vue'
+import ServiceTypeView from '../views/ServiceTypeView.vue'
+import ServiceSubscriptionView from '../views/ServiceSubscriptionView.vue'
+import ServiceVisitView from '../views/ServiceVisitView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -33,6 +36,18 @@ const router = createRouter({
         {
           path: 'command-center',
           component: CommandCenterView
+        },
+        {
+          path: 'service-types',
+          component: ServiceTypeView
+        },
+        {
+          path: 'service-subscriptions',
+          component: ServiceSubscriptionView
+        },
+        {
+          path: 'service-visits',
+          component: ServiceVisitView
         },
         {
           path: 'warnings',

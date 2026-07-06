@@ -23,8 +23,8 @@ class WarningPermissionTests(APITestCase):
             'title': '测试预警',
             'warning_type': 'rainstorm',
             'level': 'blue',
-            'content': '测试内容',
-            'community': '阳光社区',
+            'content': '水磨沟社区暴雨预警，请注意防范内涝并减少外出',
+            'community': '乌鲁木齐水磨沟社区',
             'is_active': True
         })
 
@@ -37,8 +37,8 @@ class WarningPermissionTests(APITestCase):
             'title': '测试预警',
             'warning_type': 'rainstorm',
             'level': 'blue',
-            'content': '测试内容',
-            'community': '阳光社区',
+            'content': '水磨沟社区暴雨预警，请注意防范内涝并减少外出',
+            'community': '乌鲁木齐水磨沟社区',
             'is_active': True
         })
 

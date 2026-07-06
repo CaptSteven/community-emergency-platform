@@ -86,6 +86,10 @@ class TaskCancellation(models.Model):
     help_request = models.ForeignKey(
         HelpRequest, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='关联求助'
     )
+    visit = models.ForeignKey(
+        'services.ServiceVisit', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cancellations', verbose_name='上门服务工单'
+    )
     reason = models.CharField(max_length=20, choices=REASON_CHOICES, default='other', verbose_name='取消原因')
     note = models.TextField(blank=True, default='', verbose_name='补充说明')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='取消时间')

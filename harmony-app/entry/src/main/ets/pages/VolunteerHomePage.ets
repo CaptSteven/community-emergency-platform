@@ -289,16 +289,23 @@ struct VolunteerHomePage {
       Column() {
         Row() {
           Text('📋').fontSize(16)
-          Text('我的任务由管理员统一指派')
+          Text('应急任务由管理员统一指派')
             .fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).layoutWeight(1).margin({ left: 8 })
           Text(`${this.tasks.length}`).fontSize(14).fontColor(Theme.TEXT_MUTED)
         }.width('100%').alignItems(VerticalAlign.Center)
 
-        Button(this.loading ? '刷新中...' : '刷新任务')
+        Button('🩺 我的上门服务（社区长期服务）')
+          .width('100%').height(46).fontSize(15).fontWeight(FontWeight.Medium)
+          .fontColor(Color.White).borderRadius(Theme.RADIUS_SM)
+          .backgroundColor(Theme.SUCCESS)
+          .margin({ top: 12 })
+          .onClick(() => { router.pushUrl({ url: 'pages/VolunteerServicePage' }) })
+
+        Button(this.loading ? '刷新中...' : '刷新应急任务')
           .width('100%').height(42).fontSize(15).fontWeight(FontWeight.Medium)
           .fontColor(Color.White).borderRadius(Theme.RADIUS_SM)
           .linearGradient({ angle: 90, colors: [[Theme.PRIMARY_LIGHT, 0.0], [Theme.PRIMARY_DARK, 1.0]] })
-          .margin({ top: 12 })
+          .margin({ top: 10 })
           .onClick(() => { this.loadTasks() })
       }
       .width('90%').padding(16).margin({ top: -16 }).alignItems(HorizontalAlign.Start)

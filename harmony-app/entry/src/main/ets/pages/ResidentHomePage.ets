@@ -215,7 +215,18 @@ struct ResidentHomePage {
       })
       .borderRadius({ bottomLeft: 28, bottomRight: 28 })
 
-      // 三个快捷入口卡片
+      // 社区长期服务主入口
+      Row() {
+        Button('🛎️ 我的社区服务 · 申请周期上门服务')
+          .width('100%').height(50).fontSize(15).fontWeight(FontWeight.Medium)
+          .fontColor(Color.White).borderRadius(Theme.RADIUS)
+          .linearGradient({ angle: 90, colors: [[Theme.SUCCESS, 0.0], [Theme.TEAL, 1.0]] })
+          .onClick(() => { router.pushUrl({ url: 'pages/ResidentServicePage' }) })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 16 })
+
+      // 三个快捷入口卡片（应急）
       Row() {
         this.entryCard('🆘', '提交求助', Theme.DANGER, () => {
           router.pushUrl({ url: 'pages/SubmitHelpPage' })

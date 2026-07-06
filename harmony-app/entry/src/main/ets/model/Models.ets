@@ -140,11 +140,103 @@ export interface MaterialItem {
   expiry_warning_days: number
 }
 
+// ---- 社区服务：服务类型目录 ----
+export interface ServiceTypeItem {
+  id: number
+  name: string
+  code: string
+  category: string
+  description: string
+  required_skill: string
+  default_frequency: string
+  default_frequency_display: string
+  duration_minutes: number
+  needs_health_record: boolean
+  icon: string
+  is_active: boolean
+}
+
+// ---- 社区服务：服务计划/订阅 ----
+export interface ServiceSubscriptionItem {
+  id: number
+  resident: number
+  resident_name: string
+  service_type: number
+  service_type_name: string
+  service_type_icon: string
+  frequency: string
+  frequency_display: string
+  preferred_weekday: number
+  preferred_weekday_display: string
+  preferred_time: string
+  address: string
+  note: string
+  is_active: boolean
+  start_date: string | null
+  last_generated_date: string | null
+  created_at: string
+}
+
+// ---- 社区服务：上门工单 ----
+export interface ServiceVisitItem {
+  id: number
+  subscription: number | null
+  service_type: number
+  service_type_name: string
+  service_type_icon: string
+  needs_health_record: boolean
+  resident: number
+  resident_name: string
+  volunteer: number | null
+  volunteer_name: string
+  scheduled_date: string
+  status: string
+  status_display: string
+  address: string
+  latitude: number | null
+  longitude: number | null
+  feedback: string
+  completion_photo: string | null
+  systolic: number | null
+  diastolic: number | null
+  heart_rate: number | null
+  temperature: number | null
+  health_note: string
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
 // ============================================================
 // 请求载荷（Payload）
 // ============================================================
 
 export interface EmptyPayload {
+}
+
+// 完成上门服务载荷（志愿者录入健康记录/反馈）
+export interface CompleteVisitPayload {
+  feedback: string
+  health_note: string
+  systolic?: number
+  diastolic?: number
+  heart_rate?: number
+  temperature?: number
+}
+
+// 取消上门服务载荷
+export interface CancelVisitPayload {
+  reason: string
+  note: string
+}
+
+// 居民申请周期服务载荷
+export interface CreateSubscriptionPayload {
+  service_type: number
+  frequency: string
+  preferred_weekday: number
+  preferred_time: string
+  note: string
 }
 
 export interface LoginPayload {

@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'resources',
     'analytics',
     'notifications',
+    'services',
 ]
 
 MIDDLEWARE = [
