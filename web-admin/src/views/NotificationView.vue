@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <div class="page-title">站内消息管理</div>
-        <div class="page-subtitle">查看系统通知、居民求助、任务处理和灾害预警相关消息。</div>
+        <div class="page-subtitle">查看社区服务的派单、完成、取消申请与系统通知等站内消息。</div>
       </div>
       <div>
         <el-button @click="loadData">刷新</el-button>
@@ -14,17 +14,15 @@
     <el-row :gutter="18" class="summary-row">
       <el-col :span="6"><div class="summary-card"><div class="summary-label">消息总数</div><div class="summary-value">{{ pagination.total }}</div><div class="summary-desc">当前筛选结果数量</div></div></el-col>
       <el-col :span="6"><div class="summary-card danger"><div class="summary-label">全局未读消息</div><div class="summary-value">{{ authState.unreadCount }}</div><div class="summary-desc">Header 小红点同步显示</div></div></el-col>
-      <el-col :span="6"><div class="summary-card warning"><div class="summary-label">本页求助消息</div><div class="summary-value">{{ helpRequestCount }}</div><div class="summary-desc">居民求助相关通知</div></div></el-col>
-      <el-col :span="6"><div class="summary-card success"><div class="summary-label">本页任务消息</div><div class="summary-value">{{ taskCount }}</div><div class="summary-desc">志愿者任务相关通知</div></div></el-col>
+      <el-col :span="6"><div class="summary-card warning"><div class="summary-label">本页服务消息</div><div class="summary-value">{{ serviceCount }}</div><div class="summary-desc">社区服务相关通知</div></div></el-col>
+      <el-col :span="6"><div class="summary-card success"><div class="summary-label">本页系统消息</div><div class="summary-value">{{ systemCount }}</div><div class="summary-desc">系统通知数量</div></div></el-col>
     </el-row>
 
     <div class="card filter-card">
       <el-form :inline="true">
         <el-form-item label="消息类型">
           <el-select v-model="filters.category" placeholder="全部类型" clearable style="width: 180px">
-            <el-option label="灾害预警" value="warning" />
-            <el-option label="居民求助" value="help_request" />
-            <el-option label="志愿者任务" value="task" />
+            <el-option label="社区服务" value="service" />
             <el-option label="系统消息" value="system" />
           </el-select>
         </el-form-item>
@@ -84,8 +82,8 @@ const detailVisible = ref(false)
 const currentNotification = ref(null)
 const filters = reactive({ category: '', is_read: '' })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
-const helpRequestCount = computed(() => notifications.value.filter(item => item.category === 'help_request').length)
-const taskCount = computed(() => notifications.value.filter(item => item.category === 'task').length)
+const serviceCount = computed(() => notifications.value.filter(item => item.category === 'service').length)
+const systemCount = computed(() => notifications.value.filter(item => item.category === 'system').length)
 
 const loadData = async () => {
   loading.value = true
@@ -109,8 +107,8 @@ const openDetail = row => { currentNotification.value = row; detailVisible.value
 const markRead = async (row, showMessage = true) => { await request.post(`/notifications/${row.id}/mark_read/`); row.is_read = true; await loadUnreadCount(); if (showMessage) ElMessage.success('已标记为已读') }
 const markAllRead = async () => { await request.post('/notifications/mark_all_read/'); ElMessage.success('已全部标记为已读'); await loadData() }
 const deleteNotification = async row => { await ElMessageBox.confirm(`确定要删除消息「${row.title}」吗？`, '提示', { type: 'warning' }); await request.delete(`/notifications/${row.id}/`); ElMessage.success('删除成功'); await loadData() }
-const categoryTagType = category => ({ warning: 'danger', help_request: 'warning', task: 'primary', system: 'info' }[category] || 'info')
-const relatedTypeText = type => ({ warning: '灾害预警', help_request: '居民求助', task: '志愿者任务' }[type] || type)
+const categoryTagType = category => ({ service: 'success', system: 'info', warning: 'danger', help_request: 'warning', task: 'primary' }[category] || 'info')
+const relatedTypeText = type => ({ service_visit: '上门服务', service_subscription: '服务计划', user: '用户', warning: '灾害预警', help_request: '居民求助', task: '志愿者任务' }[type] || type)
 const rowClassName = ({ row }) => row.is_read ? '' : 'unread-row'
 const formatTime = value => value ? value.replace('T', ' ').slice(0, 19) : '-'
 
