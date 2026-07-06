@@ -62,6 +62,7 @@
         </el-form>
 
         <div v-if="isDev" class="demo-account">演示账号：admin02 / 123456</div>
+        <div class="login-footer">© 2026 社区服务平台 · Community Service Admin</div>
       </div>
     </div>
   </div>
@@ -114,7 +115,8 @@ const handleLogin = async () => {
 .login-page {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(420px, 44%) 1fr;
+  /* 品牌列自适应放大更沉浸，表单列收为舒适定宽，消除右侧大片空白 */
+  grid-template-columns: 1fr minmax(480px, 560px);
 }
 
 .login-left {
@@ -136,7 +138,7 @@ const handleLogin = async () => {
   width: 340px;
   height: 340px;
   border-radius: 50%;
-  background: rgba(22, 163, 74, 0.22);
+  background: rgba(6, 182, 212, 0.28);
   filter: blur(10px);
 }
 
@@ -234,7 +236,14 @@ const handleLogin = async () => {
 
 .login-right-inner {
   width: 100%;
-  max-width: 360px;
+  max-width: 400px;
+}
+
+.login-footer {
+  margin-top: 28px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .login-right h2 {

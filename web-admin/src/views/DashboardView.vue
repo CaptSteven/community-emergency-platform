@@ -10,7 +10,7 @@
         <div class="refresh-info">
           最后更新：{{ lastUpdated || '暂无' }} ｜ 自动刷新：{{ AUTO_REFRESH_INTERVAL / 1000 }} 秒/次
         </div>
-        <el-switch v-model="autoRefresh" active-text="自动刷新" inactive-text="暂停刷新" />
+        <el-switch v-model="autoRefresh" active-text="自动刷新" />
         <el-button type="primary" :loading="loading" @click="loadData()">立即刷新</el-button>
       </div>
     </div>
@@ -28,7 +28,7 @@
     <el-row :gutter="18">
       <el-col :span="6" v-for="c in serviceCards" :key="c.label">
         <div class="stat-card">
-          <div class="stat-ico" :class="{ danger: c.danger }">
+          <div class="stat-ico" :class="[c.tint, { danger: c.danger }]">
             <el-icon><component :is="c.icon" /></el-icon>
           </div>
           <div class="stat-value">{{ c.value }}</div>
@@ -42,7 +42,7 @@
     <el-row :gutter="18">
       <el-col :span="6" v-for="c in progressCards" :key="c.label">
         <div class="stat-card">
-          <div class="stat-ico" :class="{ danger: c.danger }">
+          <div class="stat-ico" :class="[c.tint, { danger: c.danger }]">
             <el-icon><component :is="c.icon" /></el-icon>
           </div>
           <div class="stat-value">{{ c.value }}</div>
@@ -168,9 +168,9 @@ const progressCards = computed(() => {
   const o = serviceOverview.value
   return [
     { icon: Files, label: '累计工单', value: o.visits_total || 0, desc: '平台生成的全部上门工单' },
-    { icon: CircleCheck, label: '已完成工单', value: o.visits_completed || 0, desc: `完成率 ${completionRate.value}%` },
+    { icon: CircleCheck, label: '已完成工单', value: o.visits_completed || 0, desc: `完成率 ${completionRate.value}%`, tint: 'service' },
     { icon: Clock, label: '进行中工单', value: o.pending_visits || 0, desc: '已排班 / 服务中' },
-    { icon: Select, label: '本周完成', value: o.completed_this_week || 0, desc: '近 7 日已完成上门' },
+    { icon: Select, label: '本周完成', value: o.completed_this_week || 0, desc: '近 7 日已完成上门', tint: 'service' },
   ]
 })
 
@@ -225,10 +225,10 @@ const renderTypeChart = data => {
     legend: { top: 0 },
     grid: { top: 44, left: 44, right: 40, bottom: 56 },
     xAxis: { type: 'category', data: names, axisLabel: { interval: 0, rotate: names.length > 4 ? 25 : 0 }, axisTick: { show: false } },
-    yAxis: { type: 'value', minInterval: 1, splitLine: FAINT },
+    yAxis: { type: 'value', minInterval: 1, splitLine: FAINT, max: v => Math.max(4, Math.ceil(v.max)) },
     series: [
-      { name: '工单总量', type: 'bar', barMaxWidth: 22, barGap: '30%', label: { ...BAR_LABEL, position: 'top' }, itemStyle: { color: '#2563EB', borderRadius: [5, 5, 0, 0] }, data: data.map(i => i.total) },
-      { name: '已完成', type: 'bar', barMaxWidth: 22, label: { ...BAR_LABEL, position: 'top' }, itemStyle: { color: '#16A34A', borderRadius: [5, 5, 0, 0] }, data: data.map(i => i.completed) }
+      { name: '工单总量', type: 'bar', barMaxWidth: 40, barGap: '20%', barCategoryGap: '45%', label: { ...BAR_LABEL, position: 'top' }, itemStyle: { color: '#2563EB', borderRadius: [5, 5, 0, 0] }, data: data.map(i => i.total) },
+      { name: '已完成', type: 'bar', barMaxWidth: 40, label: { ...BAR_LABEL, position: 'top' }, itemStyle: { color: '#16A34A', borderRadius: [5, 5, 0, 0] }, data: data.map(i => i.completed) }
     ]
   }, true)
 }
@@ -241,11 +241,11 @@ const renderLoadChart = data => {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     legend: { top: 0 },
     grid: { top: 44, left: 80, right: 50, bottom: 20 },
-    xAxis: { type: 'value', minInterval: 1, splitLine: FAINT },
+    xAxis: { type: 'value', minInterval: 1, splitLine: FAINT, max: v => Math.max(4, Math.ceil(v.max)) },
     yAxis: { type: 'category', data: sorted.map(i => i.volunteer), axisTick: { show: false } },
     series: [
-      { name: '承接工单', type: 'bar', barMaxWidth: 13, barGap: '30%', label: { ...BAR_LABEL, position: 'right' }, itemStyle: { color: '#2563EB', borderRadius: [0, 5, 5, 0] }, data: sorted.map(i => i.total) },
-      { name: '已完成', type: 'bar', barMaxWidth: 13, label: { ...BAR_LABEL, position: 'right' }, itemStyle: { color: '#16A34A', borderRadius: [0, 5, 5, 0] }, data: sorted.map(i => i.completed) }
+      { name: '承接工单', type: 'bar', barMaxWidth: 20, barGap: '20%', barCategoryGap: '45%', label: { ...BAR_LABEL, position: 'right' }, itemStyle: { color: '#2563EB', borderRadius: [0, 5, 5, 0] }, data: sorted.map(i => i.total) },
+      { name: '已完成', type: 'bar', barMaxWidth: 20, label: { ...BAR_LABEL, position: 'right' }, itemStyle: { color: '#16A34A', borderRadius: [0, 5, 5, 0] }, data: sorted.map(i => i.completed) }
     ]
   }, true)
 }
@@ -344,6 +344,11 @@ onBeforeUnmount(() => {
   color: var(--danger);
 }
 
+.stat-ico.service {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--service);
+}
+
 .stat-value {
   font-size: 34px;
   font-weight: 800;
@@ -382,11 +387,11 @@ onBeforeUnmount(() => {
 
 .chart-box {
   width: 100%;
-  height: 360px;
+  height: 320px;
 }
 
 .chart-empty {
-  height: 360px;
+  height: 320px;
   display: flex;
   flex-direction: column;
   justify-content: center;
