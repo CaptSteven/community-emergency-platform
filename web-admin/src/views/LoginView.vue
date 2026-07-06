@@ -1,86 +1,67 @@
 <template>
   <div class="login-page">
-    <div class="login-card">
-      <div class="login-left">
-        <div class="brand">
-          <div class="brand-logo">🏘️</div>
+    <!-- 左侧品牌区：整屏铺满，消除“小卡漂浮”感 -->
+    <div class="login-left">
+      <div class="brand">
+        <div class="brand-logo">社</div>
+        <div>
           <div class="brand-name">社区服务平台</div>
+          <div class="brand-sub">Community Service Admin</div>
         </div>
-        <p class="brand-tagline">基于 HarmonyOS 的社区服务与应急互助平台</p>
+      </div>
+      <p class="brand-tagline">基于 HarmonyOS 的社区周期服务管理平台</p>
 
-        <div class="feature-list">
-          <div class="feature-item">
-            <span class="feature-ico">🤝</span>
-            <div>
-              <div class="feature-title">社区长期服务</div>
-              <div class="feature-text">上门关怀、居家帮扶一站式排班</div>
-            </div>
+      <div class="feature-list">
+        <div class="feature-item">
+          <el-icon class="feature-ico"><Calendar /></el-icon>
+          <div>
+            <div class="feature-title">周期上门排班</div>
+            <div class="feature-text">健康检查、助浴、代购等按周期自动安排</div>
           </div>
-          <div class="feature-item">
-            <span class="feature-ico">🚨</span>
-            <div>
-              <div class="feature-title">应急求助响应</div>
-              <div class="feature-text">居民求助快速受理与派单</div>
-            </div>
+        </div>
+        <div class="feature-item">
+          <el-icon class="feature-ico"><Connection /></el-icon>
+          <div>
+            <div class="feature-title">技能匹配派单</div>
+            <div class="feature-text">按志愿者技能就近轮流自动分配</div>
           </div>
-          <div class="feature-item">
-            <span class="feature-ico">🙋</span>
-            <div>
-              <div class="feature-title">志愿者任务闭环</div>
-              <div class="feature-text">接单、服务、完成全流程跟踪</div>
-            </div>
+        </div>
+        <div class="feature-item">
+          <el-icon class="feature-ico"><CircleCheck /></el-icon>
+          <div>
+            <div class="feature-title">服务闭环追踪</div>
+            <div class="feature-text">开始 / 完成 / 健康记录全程留痕</div>
           </div>
-          <div class="feature-item">
-            <span class="feature-ico">📊</span>
-            <div>
-              <div class="feature-title">数据可视化复盘</div>
-              <div class="feature-text">运行态势与资源一屏掌握</div>
-            </div>
+        </div>
+        <div class="feature-item">
+          <el-icon class="feature-ico"><DataAnalysis /></el-icon>
+          <div>
+            <div class="feature-title">数据看板复盘</div>
+            <div class="feature-text">服务覆盖与志愿者负载一屏掌握</div>
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="login-right">
-        <div class="login-right-inner">
-          <h2>管理员登录</h2>
-          <p class="hint">请输入管理员账号进入后台管理系统</p>
+    <!-- 右侧登录表单 -->
+    <div class="login-right">
+      <div class="login-right-inner">
+        <h2>管理员登录</h2>
+        <p class="hint">请输入管理员账号进入后台管理系统</p>
 
-          <el-form :model="form" label-position="top" @keyup.enter="handleLogin">
-            <el-form-item label="用户名">
-              <el-input
-                v-model="form.username"
-                size="large"
-                placeholder="例如：admin02"
-                :prefix-icon="User"
-              />
-            </el-form-item>
+        <el-form :model="form" label-position="top" @keyup.enter="handleLogin">
+          <el-form-item label="用户名">
+            <el-input v-model="form.username" size="large" placeholder="例如：admin02" :prefix-icon="User" />
+          </el-form-item>
+          <el-form-item label="密码">
+            <el-input v-model="form.password" type="password" size="large" placeholder="请输入密码" show-password :prefix-icon="Lock" />
+          </el-form-item>
+          <el-button type="primary" size="large" class="login-button" :loading="loading" @click="handleLogin">
+            登 录
+          </el-button>
+        </el-form>
 
-            <el-form-item label="密码">
-              <el-input
-                v-model="form.password"
-                type="password"
-                size="large"
-                placeholder="请输入密码"
-                show-password
-                :prefix-icon="Lock"
-              />
-            </el-form-item>
-
-            <el-button
-              type="primary"
-              size="large"
-              class="login-button"
-              :loading="loading"
-              @click="handleLogin"
-            >
-              登 录
-            </el-button>
-          </el-form>
-
-          <div class="demo-account">
-            测试账号：admin02 / 123456
-          </div>
-        </div>
+        <div v-if="isDev" class="demo-account">演示账号：admin02 / 123456</div>
       </div>
     </div>
   </div>
@@ -90,45 +71,33 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { User, Lock, Calendar, Connection, CircleCheck, DataAnalysis } from '@element-plus/icons-vue'
 import request from '../api/request'
 import { setAuth, loadUnreadCount } from '../stores/auth'
 
 const router = useRouter()
 const loading = ref(false)
+const isDev = import.meta.env.DEV
 
-const form = reactive({
-  username: '',
-  password: ''
-})
+const form = reactive({ username: '', password: '' })
 
 const handleLogin = async () => {
   const username = form.username.trim()
   const password = form.password.trim()
-
   if (!username || !password) {
     ElMessage.warning('请输入用户名和密码')
     return
   }
-
   loading.value = true
-
   try {
-    const res = await request.post('/auth/login/', {
-      username,
-      password
-    })
-
+    const res = await request.post('/auth/login/', { username, password })
     const user = res.user
-
     if (!user || user.role !== 'admin') {
       ElMessage.error('当前账号不是管理员，不能进入后台')
       return
     }
-
     setAuth({ token: res.token, user })
     await loadUnreadCount()
-
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (error) {
@@ -141,49 +110,34 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
+/* 整屏左右分栏，铺满视口，彻底消除“小卡漂浮”感 */
 .login-page {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 18% 22%, rgba(37, 99, 235, 0.35), transparent 30%),
-    radial-gradient(circle at 82% 18%, rgba(22, 163, 74, 0.28), transparent 32%),
-    radial-gradient(circle at 75% 85%, rgba(6, 182, 212, 0.22), transparent 30%),
-    linear-gradient(135deg, #0f172a, #1e293b);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 30px;
-}
-
-.login-card {
-  width: 960px;
-  min-height: 560px;
-  background: #ffffff;
-  border-radius: 24px;
-  overflow: hidden;
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.4);
+  grid-template-columns: minmax(420px, 44%) 1fr;
 }
 
-/* 左侧品牌区：蓝→绿品牌渐变，体现社区服务基调 */
 .login-left {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(150deg, #1d4ed8 0%, #2563eb 45%, #0891b2 100%);
-  color: white;
-  padding: 56px 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 64px 60px;
+  color: #fff;
+  background: linear-gradient(150deg, #1d4ed8 0%, #2563eb 48%, #0891b2 100%);
 }
 
 .login-left::after {
   content: "";
   position: absolute;
-  bottom: -80px;
-  left: -60px;
-  width: 260px;
-  height: 260px;
+  bottom: -120px;
+  left: -80px;
+  width: 340px;
+  height: 340px;
   border-radius: 50%;
-  background: rgba(22, 163, 74, 0.28);
-  filter: blur(8px);
+  background: rgba(22, 163, 74, 0.22);
+  filter: blur(10px);
 }
 
 .brand {
@@ -191,20 +145,20 @@ const handleLogin = async () => {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
 .brand-logo {
-  width: 56px;
-  height: 56px;
+  width: 58px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 30px;
+  font-weight: 800;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(6px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
 }
 
 .brand-name {
@@ -213,10 +167,17 @@ const handleLogin = async () => {
   letter-spacing: 1px;
 }
 
+.brand-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  opacity: 0.8;
+}
+
 .brand-tagline {
   position: relative;
   z-index: 1;
-  margin: 20px 0 0;
+  margin: 22px 0 0;
   font-size: 15px;
   line-height: 1.8;
   opacity: 0.9;
@@ -225,30 +186,31 @@ const handleLogin = async () => {
 .feature-list {
   position: relative;
   z-index: 1;
-  margin-top: 40px;
+  margin-top: 44px;
   display: grid;
   gap: 14px;
+  max-width: 420px;
 }
 
 .feature-item {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 16px;
+  padding: 15px 18px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(8px);
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
 .feature-item:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.2);
   transform: translateX(4px);
 }
 
 .feature-ico {
-  font-size: 24px;
-  line-height: 1;
+  font-size: 22px;
+  color: #fff;
 }
 
 .feature-title {
@@ -259,7 +221,7 @@ const handleLogin = async () => {
 .feature-text {
   margin-top: 3px;
   font-size: 13px;
-  opacity: 0.86;
+  opacity: 0.85;
 }
 
 .login-right {
@@ -267,11 +229,12 @@ const handleLogin = async () => {
   align-items: center;
   justify-content: center;
   padding: 48px;
+  background: #ffffff;
 }
 
 .login-right-inner {
   width: 100%;
-  max-width: 340px;
+  max-width: 360px;
 }
 
 .login-right h2 {
@@ -289,7 +252,7 @@ const handleLogin = async () => {
 
 .login-button {
   width: 100%;
-  height: 46px;
+  height: 48px;
   margin-top: 10px;
   font-size: 16px;
   font-weight: 700;
@@ -307,13 +270,10 @@ const handleLogin = async () => {
   text-align: center;
 }
 
-@media (max-width: 820px) {
-  .login-card {
+@media (max-width: 900px) {
+  .login-page {
     grid-template-columns: 1fr;
-    width: 100%;
-    max-width: 440px;
   }
-
   .login-left {
     display: none;
   }

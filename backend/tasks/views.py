@@ -13,6 +13,11 @@ from .serializers import VolunteerTaskSerializer
 from .cancellation import evaluate_cancellation
 
 
+def _body(request):
+    """安全读取请求体：非对象(数组/字符串/数字)时当作空 dict，避免 .get 触发 500。"""
+    return request.data if isinstance(request.data, dict) else {}
+
+
 class VolunteerTaskViewSet(viewsets.ModelViewSet):
     queryset = VolunteerTask.objects.all()
     serializer_class = VolunteerTaskSerializer
@@ -121,10 +126,10 @@ class VolunteerTaskViewSet(viewsets.ModelViewSet):
         if profile is None or profile.role != 'volunteer':
             return Response({'message': '只有志愿者可以申请取消任务'}, status=status.HTTP_403_FORBIDDEN)
 
-        reason = request.data.get('reason', 'other')
+        reason = _body(request).get('reason', 'other')
         if reason not in [c[0] for c in TaskCancellation.REASON_CHOICES]:
             reason = 'other'
-        note = request.data.get('note', '') or ''
+        note = _body(request).get('note', '') or ''
 
         with transaction.atomic():
             try:
@@ -235,7 +240,7 @@ class VolunteerTaskViewSet(viewsets.ModelViewSet):
                 'message': '你不能完成其他志愿者的任务'
             }, status=status.HTTP_403_FORBIDDEN)
 
-        feedback = request.data.get('feedback', '')
+        feedback = _body(request).get('feedback', '')
 
         task.status = 'completed'
         task.feedback = feedback

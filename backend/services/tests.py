@@ -330,6 +330,33 @@ class AccessControlHardeningTests(APITestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    # 对抗测试回归：非对象请求体(数组/字符串)不得触发 500
+    def test_cancel_with_non_dict_body_no_500(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/cancel/' % visit.id,
+                                [1, 2], format='json')
+        self.assertNotEqual(resp.status_code, 500)  # 之前会 AttributeError→500
+
+    def test_cancel_nonexistent_with_array_body_no_500(self):
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/99999/cancel/', [1], format='json')
+        self.assertIn(resp.status_code, (403, 404))  # 归属/存在校验，绝不 500
+
+    def test_complete_with_string_body_no_500(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                                '"x"', content_type='application/json')
+        self.assertNotEqual(resp.status_code, 500)
+
+    def test_reassign_with_array_body_no_500(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-visits/%d/reassign/' % visit.id,
+                                [1], format='json')
+        self.assertIn(resp.status_code, (400, 403))  # 缺 volunteer_id → 400
+
 
 class SubscriptionToggleTests(APITestCase):
     """服务计划暂停/恢复：管理员可操作任意计划，居民仅可操作自己的。"""

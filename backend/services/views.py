@@ -24,6 +24,11 @@ def _profile(user):
     return getattr(user, 'profile', None)
 
 
+def _body(request):
+    """安全读取请求体：非对象(数组/字符串/数字)时当作空 dict，避免 .get 触发 500。"""
+    return request.data if isinstance(request.data, dict) else {}
+
+
 def is_admin(user):
     if user.is_superuser:
         return True
@@ -229,16 +234,16 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if visit.status not in ['assigned', 'processing']:
             return Response({'message': '当前状态不可完成'}, status=status.HTTP_400_BAD_REQUEST)
 
-        visit.feedback = request.data.get('feedback', '') or ''
-        visit.health_note = request.data.get('health_note', '') or ''
+        visit.feedback = _body(request).get('feedback', '') or ''
+        visit.health_note = _body(request).get('health_note', '') or ''
         for f in ['systolic', 'diastolic', 'heart_rate']:
-            val = request.data.get(f)
+            val = _body(request).get(f)
             if val not in (None, ''):
                 try:
                     setattr(visit, f, int(val))
                 except (TypeError, ValueError):
                     pass
-        temp = request.data.get('temperature')
+        temp = _body(request).get('temperature')
         if temp not in (None, ''):
             try:
                 visit.temperature = float(temp)
@@ -267,10 +272,10 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if profile is None or profile.role != 'volunteer':
             return Response({'message': '只有志愿者可以申请取消服务'}, status=status.HTTP_403_FORBIDDEN)
 
-        reason = request.data.get('reason', 'other')
+        reason = _body(request).get('reason', 'other')
         if reason not in [c[0] for c in TaskCancellation.REASON_CHOICES]:
             reason = 'other'
-        note = request.data.get('note', '') or ''
+        note = _body(request).get('note', '') or ''
 
         replacement = None
         with transaction.atomic():
@@ -354,7 +359,7 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         visit = self.get_object()
         if visit.status not in ['assigned', 'processing']:
             return Response({'message': '当前状态不可改派'}, status=status.HTTP_400_BAD_REQUEST)
-        volunteer_id = request.data.get('volunteer_id')
+        volunteer_id = _body(request).get('volunteer_id')
         try:
             volunteer = User.objects.get(pk=volunteer_id, profile__role='volunteer', is_active=True)
         except User.DoesNotExist:
