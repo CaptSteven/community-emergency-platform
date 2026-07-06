@@ -20,7 +20,7 @@
         <!-- 总览：社区服务数据大屏 -->
         <el-menu-item-group title="总览">
           <el-menu-item index="/dashboard">
-            <span class="menu-emoji">📊</span>
+            <el-icon><DataLine /></el-icon>
             <span>数据大屏</span>
           </el-menu-item>
         </el-menu-item-group>
@@ -28,26 +28,26 @@
         <!-- 社区服务：平台主线业务，置顶主分组 -->
         <el-menu-item-group title="社区服务">
           <el-menu-item index="/service-subscriptions" class="svc-item">
-            <span class="menu-emoji">🛎️</span>
+            <el-icon><Calendar /></el-icon>
             <span>服务计划管理</span>
           </el-menu-item>
           <el-menu-item index="/service-visits" class="svc-item">
-            <span class="menu-emoji">🗓️</span>
+            <el-icon><Tickets /></el-icon>
             <span>排班工单看板</span>
           </el-menu-item>
           <el-menu-item index="/service-types" class="svc-item">
-            <span class="menu-emoji">📋</span>
+            <el-icon><List /></el-icon>
             <span>服务目录管理</span>
           </el-menu-item>
         </el-menu-item-group>
 
         <el-menu-item-group title="系统">
           <el-menu-item index="/users">
-            <span class="menu-emoji">👤</span>
+            <el-icon><User /></el-icon>
             <span>用户管理</span>
           </el-menu-item>
           <el-menu-item index="/notifications">
-            <span class="menu-emoji">🔔</span>
+            <el-icon><Bell /></el-icon>
             <span>站内消息管理</span>
           </el-menu-item>
         </el-menu-item-group>
@@ -57,12 +57,15 @@
     <el-container>
       <el-header class="header">
         <div class="header-left">
-          基于 HarmonyOS 的社区周期服务平台
+          <el-icon class="loc-ico"><Location /></el-icon>
+          <span class="loc-root">社区服务平台</span>
+          <span class="loc-sep">/</span>
+          <span class="loc-current">{{ pageName }}</span>
         </div>
 
         <div class="header-right">
           <el-badge :value="authState.unreadCount" :hidden="authState.unreadCount <= 0" class="bell-badge">
-            <el-button circle @click="router.push('/notifications')">🔔</el-button>
+            <el-button circle :icon="Bell" @click="router.push('/notifications')" />
           </el-badge>
 
           <span class="user-info">
@@ -83,13 +86,25 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { onBeforeUnmount, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { DataLine, Calendar, Tickets, List, User, Bell, Location } from '@element-plus/icons-vue'
 import { authState, clearAuth, initAuthFromStorage, loadUnreadCount } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 let unreadTimer = null
+
+const ROUTE_NAMES = {
+  '/dashboard': '数据大屏',
+  '/service-subscriptions': '服务计划管理',
+  '/service-visits': '排班工单看板',
+  '/service-types': '服务目录管理',
+  '/users': '用户管理',
+  '/notifications': '站内消息管理'
+}
+const pageName = computed(() => ROUTE_NAMES[route.path] || '概览')
 
 const logout = async () => {
   await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
@@ -169,14 +184,11 @@ onBeforeUnmount(() => {
   padding: 6px 10px 20px;
 }
 
-/* 菜单前的 emoji 图标，统一宽度对齐 */
-.menu-emoji {
-  display: inline-flex;
-  width: 22px;
-  justify-content: center;
+/* 菜单前的线性图标，统一尺寸与间距 */
+.side-menu :deep(.el-menu-item .el-icon) {
+  font-size: 18px;
   margin-right: 10px;
-  font-size: 15px;
-  line-height: 1;
+  width: 20px;
 }
 
 /* 分组标题：更精致的层级 */
@@ -234,12 +246,31 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
+/* 头部改为面包屑式当前位置，不再与页内标题抢层级 */
 .header-left {
-  font-size: 18px;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: #64748b;
+}
+
+.loc-ico {
+  font-size: 16px;
+  color: #94a3b8;
+}
+
+.loc-root {
+  color: #64748b;
+}
+
+.loc-sep {
+  color: #cbd5e1;
+}
+
+.loc-current {
   color: #1e293b;
-  border-left: 4px solid #2563eb;
-  padding-left: 12px;
+  font-weight: 700;
 }
 
 .header-right {
