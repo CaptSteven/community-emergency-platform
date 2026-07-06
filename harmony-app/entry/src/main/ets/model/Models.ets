@@ -237,6 +237,8 @@ export interface CreateSubscriptionPayload {
   preferred_weekday: number
   preferred_time: string
   note: string
+  address: string          // 上门服务地址（居民可指定）
+  is_active?: boolean       // 编辑(PUT)时保留生效/暂停状态
 }
 
 export interface LoginPayload {

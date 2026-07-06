@@ -18,6 +18,9 @@ struct ResidentServicePage {
   @State weekday: number = 0
   @State preferredTime: string = ''
   @State note: string = ''
+  @State serviceAddress: string = ''
+  @State editingId: number = 0          // 0=新建申请，>0=编辑该服务计划
+  @State editingActive: boolean = true
 
   private weekdayLabels: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   private freqKeys: string[] = ['weekly', 'biweekly', 'monthly']
@@ -56,14 +59,41 @@ struct ResidentServicePage {
   }
 
   openSubscribe() {
+    this.editingId = 0
+    this.editingActive = true
     this.frequency = 'weekly'
     this.weekday = 0
     this.preferredTime = ''
     this.note = ''
+    this.serviceAddress = ''
     if (this.types.length > 0) {
       this.selectedTypeId = this.types[0].id
     }
     this.showSubscribe = true
+  }
+
+  // 修改已有服务计划：预填后进入表单
+  openEdit(item: ServiceSubscriptionItem) {
+    this.editingId = item.id
+    this.editingActive = item.is_active
+    this.selectedTypeId = item.service_type
+    this.frequency = item.frequency
+    this.weekday = item.preferred_weekday
+    this.preferredTime = item.preferred_time
+    this.note = item.note
+    this.serviceAddress = item.address
+    this.showSubscribe = true
+  }
+
+  // 暂停 / 恢复服务计划
+  async toggleActive(item: ServiceSubscriptionItem) {
+    try {
+      await Api.postEmpty(`/service-subscriptions/${item.id}/toggle-active/`)
+      promptAction.showToast({ message: item.is_active ? '已暂停该服务' : '已恢复该服务' })
+      this.loadAll()
+    } catch (err) {
+      promptAction.showToast({ message: '操作失败：' + (err as Error).message })
+    }
   }
 
   async submitSubscribe() {
@@ -76,11 +106,18 @@ struct ResidentServicePage {
       frequency: this.frequency,
       preferred_weekday: this.weekday,
       preferred_time: this.preferredTime,
-      note: this.note
+      note: this.note,
+      address: this.serviceAddress
     }
     try {
-      await Api.post<CreateSubscriptionPayload>('/service-subscriptions/', payload)
-      promptAction.showToast({ message: '已提交服务申请' })
+      if (this.editingId > 0) {
+        payload.is_active = this.editingActive   // 编辑用 PUT，保留生效/暂停状态
+        await Api.put<CreateSubscriptionPayload>(`/service-subscriptions/${this.editingId}/`, payload)
+        promptAction.showToast({ message: '已保存修改' })
+      } else {
+        await Api.post<CreateSubscriptionPayload>('/service-subscriptions/', payload)
+        promptAction.showToast({ message: '已提交服务申请' })
+      }
       this.showSubscribe = false
       this.loadAll()
     } catch (err) {
@@ -104,6 +141,23 @@ struct ResidentServicePage {
         Text(`${item.frequency_display} · ${item.preferred_weekday_display}${item.preferred_time !== '' ? ' ' + item.preferred_time : ''}`)
           .fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ left: 6 })
       }.width('100%').margin({ top: 10 })
+      if (item.address !== '') {
+        Row() {
+          Text('📍').fontSize(14)
+          Text(item.address).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ left: 6 }).layoutWeight(1)
+        }.width('100%').margin({ top: 8 })
+      }
+      Row() {
+        Button('修改服务')
+          .layoutWeight(1).height(40).fontSize(14).fontColor(Theme.PRIMARY)
+          .backgroundColor('#EEF2FF').borderRadius(Theme.RADIUS_SM)
+          .onClick(() => { this.openEdit(item) })
+        Button(item.is_active ? '暂停' : '恢复')
+          .layoutWeight(1).height(40).fontSize(14)
+          .fontColor(item.is_active ? Theme.WARN : Theme.SUCCESS)
+          .backgroundColor(item.is_active ? '#FFF7ED' : '#F0FDF4').borderRadius(Theme.RADIUS_SM).margin({ left: 10 })
+          .onClick(() => { this.toggleActive(item) })
+      }.width('100%').margin({ top: 12 })
     }
     .width('100%').padding(16).alignItems(HorizontalAlign.Start)
     .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
@@ -173,7 +227,7 @@ struct ResidentServicePage {
   @Builder
   SubscribeForm() {
     Column() {
-      Text('申请周期服务').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ bottom: 14 })
+      Text(this.editingId > 0 ? '修改服务计划' : '申请周期服务').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ bottom: 14 })
 
       Text('服务类型').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY).margin({ bottom: 8 })
       Flex({ wrap: FlexWrap.Wrap }) {
@@ -209,11 +263,16 @@ struct ResidentServicePage {
       }.width('100%')
 
       Text('首选时段').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY).margin({ top: 8, bottom: 8 })
-      TextInput({ placeholder: '如 09:00' }).width('100%').margin({ bottom: 12 })
+      TextInput({ placeholder: '如 09:00', text: this.preferredTime }).width('100%').margin({ bottom: 12 })
         .onChange((v: string) => { this.preferredTime = v })
 
+      Text('服务地址（上门位置）').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY).margin({ bottom: 8 })
+      TextInput({ placeholder: '如 水磨沟区XX路X号楼X单元；留空取账号地址', text: this.serviceAddress })
+        .width('100%').margin({ bottom: 12 })
+        .onChange((v: string) => { this.serviceAddress = v })
+
       Text('备注').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).margin({ bottom: 8 })
-      TextArea({ placeholder: '补充说明，如老人情况、门禁信息等' })
+      TextArea({ placeholder: '补充说明，如老人情况、门禁信息等', text: this.note })
         .height(70).width('100%').margin({ bottom: 16 })
         .onChange((v: string) => { this.note = v })
 
@@ -222,7 +281,7 @@ struct ResidentServicePage {
           .layoutWeight(1).height(44).fontSize(15).fontColor(Theme.TEXT_BODY)
           .backgroundColor('#E5E7EB').borderRadius(Theme.RADIUS_SM)
           .onClick(() => { this.showSubscribe = false })
-        Button('提交申请')
+        Button(this.editingId > 0 ? '保存修改' : '提交申请')
           .layoutWeight(1).height(44).fontSize(15).fontColor(Color.White)
           .backgroundColor(Theme.PRIMARY).borderRadius(Theme.RADIUS_SM).margin({ left: 12 })
           .onClick(() => { this.submitSubscribe() })

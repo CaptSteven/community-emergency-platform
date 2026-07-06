@@ -3,9 +3,6 @@ import promptAction from '@ohos.promptAction'
 import { Api, Session } from '../common/Api'
 import { PushService } from '../common/PushService'
 import { LoginPayload, LoginResponse } from '../model/Models'
-import { LocationService } from '../common/LocationService'
-import { LocationResult } from '../model/Models'
-import { BusinessError } from '@ohos.base'
 import { Theme } from '../common/Theme'
 import { common } from '@kit.AbilityKit'
 
@@ -15,7 +12,6 @@ struct LoginPage {
   @State username: string = 'resident1'
   @State password: string = '123456'
   @State loading: boolean = false
-  @State sosSending: boolean = false
 
   // 启动时尝试自动登录：若本地有已保存且仍有效的登录态，直接进入对应主页
   async aboutToAppear() {
@@ -85,25 +81,6 @@ struct LoginPage {
     }
   }
 
-  // 一键紧急求助：获取位置后直接发送 SOS，无需登录
-  async sosHelp() {
-    this.sosSending = true
-    try {
-      let loc: LocationResult = await LocationService.getCurrentLocation()
-      let payload: Record<string, number> = {
-        'latitude': loc.latitude,
-        'longitude': loc.longitude
-      }
-      await Api.post<Record<string, number>>('/auth/emergency/', payload)
-      promptAction.showToast({ message: '紧急求助已发送！救援人员将尽快响应' })
-    } catch (err) {
-      let e = err as BusinessError
-      promptAction.showToast({ message: e.message ? e.message : '发送失败，请确认已开启定位' })
-    } finally {
-      this.sosSending = false
-    }
-  }
-
   build() {
     Column() {
       // 顶部渐变头部
@@ -112,12 +89,12 @@ struct LoginPage {
           .fontSize(52)
           .margin({ bottom: 10 })
 
-        Text('社区应急互助平台')
+        Text('社区服务平台')
           .fontSize(27)
           .fontWeight(FontWeight.Bold)
           .fontColor(Color.White)
 
-        Text('居民求助 · 志愿者响应 · 灾害预警')
+        Text('周期上门 · 居家关怀 · 志愿服务')
           .fontSize(14)
           .fontColor('#DBEAFE')
           .margin({ top: 10 })
@@ -191,29 +168,6 @@ struct LoginPage {
           .onClick(() => {
             router.pushUrl({ url: 'pages/RegisterPage' })
           })
-
-        // 一键紧急求助（无需登录，仅需定位）
-        Button(this.sosSending ? '发送中...' : '🆘 一键紧急求助')
-          .width('100%')
-          .height(52)
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
-          .backgroundColor(Theme.DANGER)
-          .borderRadius(Theme.RADIUS_SM)
-          .enabled(!this.sosSending)
-          .shadow({ radius: 16, color: '#66EF4444', offsetX: 0, offsetY: 4 })
-          .margin({ top: 14 })
-          .onClick(() => {
-            this.sosHelp()
-          })
-
-        Text('无需登录 · 自动定位 · 一键发送求救信号')
-          .fontSize(12)
-          .fontColor(Theme.DANGER)
-          .margin({ top: 8 })
-          .width('100%')
-          .textAlign(TextAlign.Center)
 
         // 演示账号提示区
         Column() {

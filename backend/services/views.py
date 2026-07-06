@@ -234,21 +234,31 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if visit.status not in ['assigned', 'processing']:
             return Response({'message': '当前状态不可完成'}, status=status.HTTP_400_BAD_REQUEST)
 
-        visit.feedback = _body(request).get('feedback', '') or ''
-        visit.health_note = _body(request).get('health_note', '') or ''
-        for f in ['systolic', 'diastolic', 'heart_rate']:
-            val = _body(request).get(f)
-            if val not in (None, ''):
-                try:
-                    setattr(visit, f, int(val))
-                except (TypeError, ValueError):
-                    pass
-        temp = _body(request).get('temperature')
+        body = _body(request)
+        visit.feedback = body.get('feedback', '') or ''
+        visit.health_note = body.get('health_note', '') or ''
+        # 健康记录需做范围校验，非法/超范围一律 400，杜绝把坏值写入 DB（曾导致读取行时 500 的数据投毒）
+        int_bounds = {'systolic': (0, 300), 'diastolic': (0, 200), 'heart_rate': (0, 300)}
+        for f, (lo, hi) in int_bounds.items():
+            val = body.get(f)
+            if val in (None, ''):
+                continue
+            try:
+                iv = int(val)
+            except (TypeError, ValueError):
+                return Response({'message': f'{f} 必须是整数'}, status=status.HTTP_400_BAD_REQUEST)
+            if not (lo <= iv <= hi):
+                return Response({'message': f'{f} 超出合理范围（{lo}-{hi}）'}, status=status.HTTP_400_BAD_REQUEST)
+            setattr(visit, f, iv)
+        temp = body.get('temperature')
         if temp not in (None, ''):
             try:
-                visit.temperature = float(temp)
+                tv = round(float(temp), 1)
             except (TypeError, ValueError):
-                pass
+                return Response({'message': '体温必须是数字'}, status=status.HTTP_400_BAD_REQUEST)
+            if not (25.0 <= tv <= 45.0):  # DecimalField(max_digits=4,decimal_places=1) 且体温合理区间
+                return Response({'message': '体温超出合理范围（25-45℃）'}, status=status.HTTP_400_BAD_REQUEST)
+            visit.temperature = tv
         if 'photo' in request.FILES:
             visit.completion_photo = request.FILES['photo']
 
@@ -361,8 +371,8 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             return Response({'message': '当前状态不可改派'}, status=status.HTTP_400_BAD_REQUEST)
         volunteer_id = _body(request).get('volunteer_id')
         try:
-            volunteer = User.objects.get(pk=volunteer_id, profile__role='volunteer', is_active=True)
-        except User.DoesNotExist:
+            volunteer = User.objects.get(pk=int(volunteer_id), profile__role='volunteer', is_active=True)
+        except (User.DoesNotExist, ValueError, TypeError):
             return Response({'message': '指定志愿者不存在或不可用'}, status=status.HTTP_400_BAD_REQUEST)
         visit.volunteer = volunteer
         visit.status = 'assigned'

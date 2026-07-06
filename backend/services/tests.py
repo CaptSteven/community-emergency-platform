@@ -357,6 +357,67 @@ class AccessControlHardeningTests(APITestCase):
                                 [1], format='json')
         self.assertIn(resp.status_code, (400, 403))  # 缺 volunteer_id → 400
 
+    # 对抗测试回归：超范围体温不得落库（曾导致该行读取 500 的数据投毒 DoS）
+    def test_complete_rejects_out_of_range_temperature(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                                {'temperature': 99999.9}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        visit.refresh_from_db()
+        self.assertIsNone(visit.temperature)          # 未落库
+        self.assertNotEqual(visit.status, 'completed')  # 未完成
+        # 列表仍可正常读取，未被投毒
+        self.assertEqual(self.client.get('/api/service-visits/').status_code, 200)
+
+    def test_complete_rejects_out_of_range_systolic(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                                {'systolic': 99999}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_complete_accepts_valid_vitals(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                                {'systolic': 120, 'diastolic': 80, 'heart_rate': 72, 'temperature': 36.6},
+                                format='json')
+        self.assertEqual(resp.status_code, 200)
+        visit.refresh_from_db()
+        self.assertEqual(float(visit.temperature), 36.6)
+
+    def test_reassign_non_numeric_volunteer_id_no_500(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-visits/%d/reassign/' % visit.id,
+                                {'volunteer_id': 'abc'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    # 居民可修改自己的服务计划（App 用 PUT 提交地址/周期等）
+    def test_resident_edit_own_subscription_via_put(self):
+        sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.stype, frequency='weekly')
+        self.client.force_authenticate(self.resident)
+        resp = self.client.put('/api/service-subscriptions/%d/' % sub.id, {
+            'service_type': self.stype.id, 'frequency': 'monthly', 'preferred_weekday': 2,
+            'preferred_time': '10:00', 'note': '改了', 'address': '水磨沟区新地址1号', 'is_active': True,
+        }, format='json')
+        self.assertEqual(resp.status_code, 200)
+        sub.refresh_from_db()
+        self.assertEqual(sub.frequency, 'monthly')
+        self.assertEqual(sub.address, '水磨沟区新地址1号')
+        self.assertEqual(sub.resident, self.resident)  # 受益居民不变
+
+    def test_resident_toggle_active_own_subscription(self):
+        sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.stype, frequency='weekly', is_active=True)
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-subscriptions/%d/toggle-active/' % sub.id, {}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        sub.refresh_from_db()
+        self.assertFalse(sub.is_active)
+
 
 class SubscriptionToggleTests(APITestCase):
     """服务计划暂停/恢复：管理员可操作任意计划，居民仅可操作自己的。"""
