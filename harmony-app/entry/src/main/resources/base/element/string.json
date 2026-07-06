@@ -10,7 +10,19 @@
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "社区互助"
+    },
+    {
+      "name": "location_reason",
+      "value": "用于在提交求助和查找附近避难所时获取您的当前位置"
+    },
+    {
+      "name": "approximately_location_reason",
+      "value": "用于获取您的大致位置以匹配附近避难所与救援资源"
+    },
+    {
+      "name": "form_WarningCard_desc",
+      "value": "灾害预警与待处理求助快捷卡片"
     }
   ]
 }

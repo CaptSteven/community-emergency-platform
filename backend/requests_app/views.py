@@ -1,6 +1,8 @@
 import math
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -88,7 +90,11 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
             return base_queryset.filter(resident=user)
 
         if profile.role == 'volunteer':
-            return base_queryset.exclude(status='completed')
+            # 志愿者只看：1）可认领的待处理求助；2）已经分配/认领给自己的求助。
+            # 避免志愿者端看到其他志愿者正在处理的求助。
+            return base_queryset.filter(
+                Q(status='pending') | Q(volunteer_task__volunteer=user)
+            ).distinct()
 
         return HelpRequest.objects.none()
 
@@ -179,6 +185,89 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
         return Response(result[:3])
 
     @action(detail=True, methods=['post'])
+    def claim(self, request, pk=None):
+        """志愿者自主认领待处理求助。
+
+        鸿蒙志愿者端会直接调用 /api/help-requests/{id}/claim/。
+        认领成功后立即生成/复用任务，并进入 processing，避免“端侧有按钮但后端 404”的问题。
+        """
+        profile = getattr(request.user, 'profile', None)
+        if profile is None or profile.role != 'volunteer':
+            return Response({'message': '只有志愿者可以认领求助'}, status=status.HTTP_403_FORBIDDEN)
+
+        with transaction.atomic():
+            try:
+                help_request = HelpRequest.objects.select_for_update().select_related('resident').get(pk=pk)
+            except HelpRequest.DoesNotExist:
+                return Response({'message': '求助不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+            volunteer_profile = UserProfile.objects.select_for_update().get(user=request.user)
+
+            if help_request.status != 'pending':
+                return Response({'message': '只有待处理求助可以被志愿者认领'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not volunteer_profile.is_available:
+                return Response({'message': '你当前已有任务处理中，暂不能认领新的求助'}, status=status.HTTP_400_BAD_REQUEST)
+
+            existing_task = VolunteerTask.objects.select_for_update().filter(help_request=help_request).first()
+            now = timezone.now()
+
+            if existing_task is not None:
+                if existing_task.volunteer_id == request.user.id and existing_task.status in ['assigned', 'processing']:
+                    task = existing_task
+                    task.status = 'processing'
+                    task.accepted_at = task.accepted_at or now
+                    task.save(update_fields=['status', 'accepted_at'])
+                elif existing_task.volunteer_id is None and existing_task.status in ['assigned', 'cancelled']:
+                    task = existing_task
+                    task.volunteer = request.user
+                    task.status = 'processing'
+                    task.feedback = ''
+                    task.accepted_at = now
+                    task.completed_at = None
+                    task.save(update_fields=['volunteer', 'status', 'feedback', 'accepted_at', 'completed_at'])
+                else:
+                    assigned_name = existing_task.volunteer.username if existing_task.volunteer else '其他志愿者'
+                    return Response({
+                        'message': f'该求助已存在任务，不能重复认领。当前任务状态：{existing_task.get_status_display()}，志愿者：{assigned_name}',
+                        'task_id': existing_task.id,
+                        'task_status': existing_task.status,
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                task = VolunteerTask.objects.create(
+                    help_request=help_request,
+                    volunteer=request.user,
+                    status='processing',
+                    accepted_at=now,
+                )
+
+            help_request.status = 'processing'
+            help_request.save(update_fields=['status', 'updated_at'])
+
+            volunteer_profile.is_available = False
+            volunteer_profile.save(update_fields=['is_available'])
+
+        create_notification(
+            recipient=help_request.resident,
+            title='志愿者已认领求助',
+            content=f'你的求助已由志愿者 {request.user.username} 认领，正在处理中。',
+            category='help_request',
+            related_type='help_request',
+            related_id=help_request.id
+        )
+
+        return Response({
+            'message': '认领成功',
+            'help_request': HelpRequestSerializer(help_request).data,
+            'task': {
+                'id': task.id,
+                'volunteer_id': request.user.id,
+                'volunteer_name': request.user.username,
+                'status': task.status,
+            }
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
         user = request.user
         profile = getattr(user, 'profile', None)
@@ -208,20 +297,48 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
             help_request = HelpRequest.objects.select_for_update().get(id=help_request.id)
             volunteer_profile = UserProfile.objects.select_for_update().get(user=volunteer)
 
-            if help_request.status != 'pending':
-                return Response({'message': '只有待处理的求助才能分配志愿者'}, status=status.HTTP_400_BAD_REQUEST)
+            existing_task = VolunteerTask.objects.select_for_update().filter(
+                help_request=help_request
+            ).first()
 
-            if VolunteerTask.objects.filter(help_request=help_request).exists():
-                return Response({'message': '该求助已经分配过任务，不能重复分配'}, status=status.HTTP_400_BAD_REQUEST)
+            # 说明：系统允许存在“未绑定志愿者的待抢单任务”。
+            # 这种任务虽然已有 VolunteerTask 记录，但 volunteer 为空，不能算已经完成管理员派单。
+            # 旧逻辑只要 exists() 就拒绝，导致地图拖拽派单误报“该求助已经分配过任务”。
+            reusable_open_task = (
+                existing_task is not None
+                and existing_task.volunteer_id is None
+                and existing_task.status in ['assigned', 'cancelled']
+            )
+
+            if help_request.status not in ['pending', 'assigned']:
+                return Response({'message': '只有待处理或待分配的求助才能分配志愿者'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if existing_task is not None and not reusable_open_task:
+                assigned_name = existing_task.volunteer.username if existing_task.volunteer else '未知志愿者'
+                return Response({
+                    'message': f'该求助已经存在有效任务，不能重复分配。当前任务状态：{existing_task.get_status_display()}，志愿者：{assigned_name}',
+                    'task_id': existing_task.id,
+                    'task_status': existing_task.status,
+                    'volunteer_id': existing_task.volunteer_id,
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if not volunteer_profile.is_available:
                 return Response({'message': '该志愿者当前不可用'}, status=status.HTTP_400_BAD_REQUEST)
 
-            task = VolunteerTask.objects.create(
-                help_request=help_request,
-                volunteer=volunteer,
-                status='assigned'
-            )
+            if reusable_open_task:
+                task = existing_task
+                task.volunteer = volunteer
+                task.status = 'assigned'
+                task.feedback = ''
+                task.accepted_at = None
+                task.completed_at = None
+                task.save(update_fields=['volunteer', 'status', 'feedback', 'accepted_at', 'completed_at'])
+            else:
+                task = VolunteerTask.objects.create(
+                    help_request=help_request,
+                    volunteer=volunteer,
+                    status='assigned'
+                )
 
             help_request.status = 'assigned'
             help_request.save(update_fields=['status', 'updated_at'])
@@ -257,6 +374,19 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
                 'status': task.status,
             }
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='map-dispatch')
+    def map_dispatch(self, request, pk=None):
+        """一图指挥舱地图拖拽派单接口。
+
+        前端将空闲志愿者 Marker 拖动到待处理求助点附近后调用该接口。
+        后端复用 assign 的事务锁、状态校验和通知逻辑，避免绕过并发安全检查。
+        """
+        response = self.assign(request, pk)
+        if response.status_code == status.HTTP_200_OK:
+            response.data['message'] = '地图拖拽派单成功'
+            response.data['dispatch_mode'] = 'map_drag'
+        return response
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):

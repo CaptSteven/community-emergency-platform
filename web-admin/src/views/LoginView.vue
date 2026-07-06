@@ -65,7 +65,10 @@ const form = reactive({
 })
 
 const handleLogin = async () => {
-  if (!form.username || !form.password) {
+  const username = form.username.trim()
+  const password = form.password.trim()
+
+  if (!username || !password) {
     ElMessage.warning('请输入用户名和密码')
     return
   }
@@ -74,8 +77,8 @@ const handleLogin = async () => {
 
   try {
     const res = await request.post('/auth/login/', {
-      username: form.username,
-      password: form.password
+      username,
+      password
     })
 
     const user = res.user
@@ -91,7 +94,8 @@ const handleLogin = async () => {
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (error) {
-    ElMessage.error('登录失败，请检查账号、密码或后端服务是否正常')
+    const message = error?.response?.data?.message || '登录失败，请检查账号、密码或后端服务是否正常'
+    ElMessage.error(message)
   } finally {
     loading.value = false
   }

@@ -157,7 +157,7 @@
           show-icon
           :closable="false"
           class="plan-alert"
-          title="红色预警可联动启动应急预案：强提醒居民、开放避难点、向志愿者发送待命指令。"
+          title="红色预警发布后，鸿蒙居民端和志愿者端首页会立即弹出强提醒；也可同时联动启动应急预案。"
         />
 
         <el-form-item v-if="!isEdit && form.level === 'red'" label="联动机制">
@@ -247,8 +247,11 @@ const openDetail = row => { currentWarning.value = row; detailVisible.value = tr
 
 const submitForm = async () => {
   await formRef.value.validate()
-  if (!isEdit.value && form.level === 'red' && form.launch_emergency_plan) {
-    await ElMessageBox.confirm('确认发布红色预警并联动启动应急预案吗？', '红色预警联动确认', { type: 'warning' })
+  if (!isEdit.value && form.level === 'red') {
+    const message = form.launch_emergency_plan
+      ? '确认发布红色预警并联动启动应急预案吗？发布后鸿蒙居民端和志愿者端会弹出强提醒。'
+      : '确认发布红色预警吗？发布后鸿蒙居民端和志愿者端会弹出强提醒。'
+    await ElMessageBox.confirm(message, '红色预警发布确认', { type: 'warning' })
   }
 
   submitLoading.value = true
@@ -267,7 +270,7 @@ const submitForm = async () => {
       ElMessage.success('预警修改成功')
     } else {
       await request.post('/warnings/', payload)
-      ElMessage.success(form.launch_emergency_plan ? '预警发布成功，应急预案已联动启动' : '预警发布成功')
+      ElMessage.success(form.level === 'red' ? '红色预警发布成功，移动端将弹出强提醒' : '预警发布成功')
     }
     formVisible.value = false
     await loadData()

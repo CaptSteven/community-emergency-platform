@@ -1,19 +1,93 @@
 import http from '@ohos.net.http'
-import { EmptyPayload } from '../model/Models'
+import router from '@ohos.router'
+import { preferences } from '@kit.ArkData'
+import { common } from '@kit.AbilityKit'
+import { EmptyPayload, PaginatedList, UserInfo } from '../model/Models'
 
 export class Session {
   static token: string = ''
   static userId: number = 0
   static username: string = ''
   static role: string = ''
+  static phone: string = ''
+  static community: string = ''
+  static address: string = ''
+  static skills: string = ''
+
+  static saveUser(user: UserInfo): void {
+    Session.userId = user.id
+    Session.username = user.username
+    Session.role = user.role
+    Session.phone = user.phone || ''
+    Session.community = user.community || ''
+    Session.address = user.address || ''
+    Session.skills = user.skills || ''
+  }
+
+  static async persist(context: common.UIAbilityContext): Promise<void> {
+    let store = await preferences.getPreferences(context, { name: 'session' } as preferences.Options)
+    await store.put('token', Session.token)
+    await store.put('userId', Session.userId)
+    await store.put('username', Session.username)
+    await store.put('role', Session.role)
+    await store.put('phone', Session.phone)
+    await store.put('community', Session.community)
+    await store.put('address', Session.address)
+    await store.put('skills', Session.skills)
+    await store.flush()
+  }
+
+  static async restore(context: common.UIAbilityContext): Promise<boolean> {
+    let store = await preferences.getPreferences(context, { name: 'session' } as preferences.Options)
+    let token = await store.get('token', '') as string
+    if (token === '') {
+      return false
+    }
+    Session.token = token
+    Session.userId = await store.get('userId', 0) as number
+    Session.username = await store.get('username', '') as string
+    Session.role = await store.get('role', '') as string
+    Session.phone = await store.get('phone', '') as string
+    Session.community = await store.get('community', '') as string
+    Session.address = await store.get('address', '') as string
+    Session.skills = await store.get('skills', '') as string
+    return true
+  }
+
+  static async clear(context: common.UIAbilityContext): Promise<void> {
+    Session.token = ''
+    Session.userId = 0
+    Session.username = ''
+    Session.role = ''
+    Session.phone = ''
+    Session.community = ''
+    Session.address = ''
+    Session.skills = ''
+    let store = await preferences.getPreferences(context, { name: 'session' } as preferences.Options)
+    await store.clear()
+    await store.flush()
+  }
 }
 
 export class Api {
-  // 注意：这里改成你自己电脑的局域网 IP
-  static BASE_URL: string = 'http://10.110.56.10:8000/api'
+  static BASE_URL: string = 'http://10.204.190.31:8000/api'
 
   static async get(path: string): Promise<Object> {
     return await Api.request<EmptyPayload>(path, http.RequestMethod.GET)
+  }
+
+  static async getList<T>(path: string): Promise<T[]> {
+    let response = await Api.request<EmptyPayload>(path, http.RequestMethod.GET)
+    if (Array.isArray(response)) {
+      return response as T[]
+    }
+    let paginated = response as PaginatedList<T>
+    return paginated.results || []
+  }
+
+  static async getPaginated<T>(path: string): Promise<PaginatedList<T>> {
+    let response = await Api.request<EmptyPayload>(path, http.RequestMethod.GET)
+    return response as PaginatedList<T>
   }
 
   static async post<T>(path: string, data: T): Promise<Object> {
@@ -24,7 +98,6 @@ export class Api {
     return await Api.request<EmptyPayload>(path, http.RequestMethod.POST)
   }
 
-  // HarmonyOS 这里没有 PATCH，先用 PUT 代替
   static async put<T>(path: string, data: T): Promise<Object> {
     return await Api.request<T>(path, http.RequestMethod.PUT, data)
   }
@@ -62,8 +135,32 @@ export class Api {
       let statusCode = response.responseCode
       let resultText = response.result as string
 
+      if (statusCode === 401) {
+        Session.token = ''
+        Session.userId = 0
+        Session.username = ''
+        Session.role = ''
+        router.replaceUrl({ url: 'pages/LoginPage' })
+        throw new Error('登录已失效，请重新登录')
+      }
+
+      if (statusCode === 403) {
+        throw new Error('无权限访问该功能')
+      }
+
       if (statusCode < 200 || statusCode >= 300) {
-        throw new Error(resultText)
+        let errorMessage = resultText
+        try {
+          let errorData = JSON.parse(resultText) as Record<string, Object>
+          if (errorData['message']) {
+            errorMessage = errorData['message'] as string
+          } else if (errorData['detail']) {
+            errorMessage = errorData['detail'] as string
+          }
+        } catch (parseError) {
+          // resultText 不是 JSON 时直接使用原始内容。
+        }
+        throw new Error(errorMessage)
       }
 
       if (resultText === '' || resultText === undefined || resultText === null) {

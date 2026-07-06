@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
-from users.views import RegisterAPIView, LoginAPIView, MeAPIView, UserViewSet, UpdateMyLocationAPIView
+from users.views import RegisterAPIView, LoginAPIView, MeAPIView, UserViewSet, UpdateMyLocationAPIView, EmergencyHelpAPIView, DeviceTokenAPIView
 from alerts.views import WarningViewSet
 from requests_app.views import HelpRequestViewSet
 from tasks.views import VolunteerTaskViewSet
@@ -72,4 +72,6 @@ urlpatterns = [
     path('api/auth/login/', LoginAPIView.as_view()),
     path('api/auth/me/', MeAPIView.as_view()),
     path('api/auth/update-location/', UpdateMyLocationAPIView.as_view()),
+    path('api/auth/emergency/', EmergencyHelpAPIView.as_view()),
+    path('api/auth/device-token/', DeviceTokenAPIView.as_view()),
 ]

@@ -1,9 +1,23 @@
+import math
 from django.db.models import F, Q
 from django.utils import timezone
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from emergency_backend.permissions import IsAdminOrReadOnly
 from .models import Shelter, Material
 from .serializers import ShelterSerializer, MaterialSerializer
+
+
+def haversine_km(lng1, lat1, lng2, lat2):
+    if None in [lng1, lat1, lng2, lat2]:
+        return None
+    lng1, lat1, lng2, lat2 = map(math.radians, [float(lng1), float(lat1), float(lng2), float(lat2)])
+    dlng = lng2 - lng1
+    dlat = lat2 - lat1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
+    c = 2 * math.asin(math.sqrt(a))
+    return round(6371.0088 * c, 2)
 
 
 class ShelterViewSet(viewsets.ModelViewSet):
@@ -13,6 +27,40 @@ class ShelterViewSet(viewsets.ModelViewSet):
     filterset_fields = ['is_available']
     search_fields = ['name', 'address', 'contact_phone']
     ordering_fields = ['created_at', 'capacity', 'name']
+
+    @action(detail=False, methods=['get'])
+    def nearby(self, request):
+        """根据经纬度返回附近可用避难点，供鸿蒙端 /shelters/nearby/ 调用。"""
+        lat = request.query_params.get('lat')
+        lng = request.query_params.get('lng')
+        limit = request.query_params.get('limit', 10)
+
+        try:
+            lat_value = float(lat)
+            lng_value = float(lng)
+            limit_value = min(max(int(limit), 1), 50)
+        except (TypeError, ValueError):
+            return Response({'message': '请提供合法的 lat、lng 和 limit 参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (-90 <= lat_value <= 90):
+            return Response({'message': '纬度必须在 -90 到 90 之间'}, status=status.HTTP_400_BAD_REQUEST)
+        if not (-180 <= lng_value <= 180):
+            return Response({'message': '经度必须在 -180 到 180 之间'}, status=status.HTTP_400_BAD_REQUEST)
+
+        shelters = Shelter.objects.filter(
+            is_available=True,
+            latitude__isnull=False,
+            longitude__isnull=False,
+        )
+
+        data = []
+        for shelter in shelters:
+            item = ShelterSerializer(shelter).data
+            item['distance_km'] = haversine_km(lng_value, lat_value, shelter.longitude, shelter.latitude)
+            data.append(item)
+
+        data.sort(key=lambda item: item['distance_km'] if item['distance_km'] is not None else 10**9)
+        return Response(data[:limit_value])
 
 
 class MaterialViewSet(viewsets.ModelViewSet):

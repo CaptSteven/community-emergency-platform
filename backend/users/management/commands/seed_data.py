@@ -16,9 +16,10 @@ class Command(BaseCommand):
     def create_user(self, username, password, role, phone='', community='阳光社区', address='', longitude=None, latitude=None, skills=''):
         user, created = User.objects.get_or_create(username=username)
 
-        if created:
-            user.set_password(password)
-            user.save()
+        # 演示账号每次初始化都重置为固定密码，避免数据库中已存在旧账号时
+        # 出现页面提示 123456、但实际密码不是 123456，导致 /api/auth/login/ 返回 400。
+        user.set_password(password)
+        user.save()
 
         profile, _ = UserProfile.objects.get_or_create(
             user=user,
@@ -52,10 +53,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.create_user('admin02', '123456', 'admin', '13800000001')
-        self.create_user('resident02', '123456', 'resident', '13800000002', address='阳光社区1号楼')
+
+        # 鸿蒙端登录页默认展示 resident1 / volunteer1，因此后端初始化也创建同名账号。
+        self.create_user('resident1', '123456', 'resident', '13800000002', address='阳光社区1号楼')
+        self.create_user('volunteer1', '123456', 'volunteer', '13800000003', longitude=116.4040000, latitude=39.9150000, skills='医疗 急救 老人')
+
+        # 兼容旧版演示账号，避免已经写入报告或测试脚本的账号失效。
+        self.create_user('resident02', '123456', 'resident', '13800000012', address='阳光社区1号楼')
 
         # 志愿者演示坐标：用于百度地图志愿者热力图。正式项目中由鸿蒙端实时上报。
-        self.create_user('volunteer02', '123456', 'volunteer', '13800000003', longitude=116.4040000, latitude=39.9150000, skills='医疗 急救 老人')
+        self.create_user('volunteer02', '123456', 'volunteer', '13800000013', longitude=116.4040000, latitude=39.9150000, skills='医疗 急救 老人')
         self.create_user('volunteer03', '123456', 'volunteer', '13800000004', longitude=116.4140000, latitude=39.9220000, skills='物资 分发 转运')
         self.create_user('volunteer04', '123456', 'volunteer', '13800000005', longitude=116.3940000, latitude=39.9080000, skills='积水 内涝 排水')
         self.create_user('volunteer05', '123456', 'volunteer', '13800000006', longitude=116.4250000, latitude=39.9130000, skills='火灾 疏散 转移')

@@ -5,6 +5,8 @@
     "pages/ResidentHomePage",
     "pages/SubmitHelpPage",
     "pages/VolunteerHomePage",
-    "pages/NotificationsPage"
+    "pages/NotificationsPage",
+    "pages/NearbyShelterPage",
+    "pages/RegisterPage"
   ]
 }

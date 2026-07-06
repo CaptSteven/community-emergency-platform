@@ -408,6 +408,42 @@ class VolunteerHeatmapAPIView(APIView):
         return Response(data)
 
 
+def build_command_help_request_item(item):
+    task = getattr(item, 'volunteer_task', None)
+    task_id = task.id if task else None
+    task_status = task.status if task else None
+    assigned_volunteer_id = task.volunteer_id if task else None
+    assigned_volunteer_name = task.volunteer.username if task and task.volunteer else None
+
+    # 可调度含义：该求助仍可由管理员派给志愿者。
+    # 没有任务记录的 pending 求助可调度；已有“未绑定志愿者”的开放任务也可调度。
+    is_open_unassigned_task = task is not None and task.volunteer_id is None and task.status in ['assigned', 'cancelled']
+    is_dispatchable = (item.status == 'pending' and task is None) or is_open_unassigned_task
+
+    return {
+        'feature_type': 'help_request',
+        'id': item.id,
+        'resident_name': item.resident.username,
+        'type': item.request_type,
+        'type_display': item.get_request_type_display(),
+        'urgency': item.urgency,
+        'urgency_display': item.get_urgency_display(),
+        'status': item.status,
+        'status_display': item.get_status_display(),
+        'summary': item.ai_summary,
+        'description': item.description,
+        'address': item.address,
+        'longitude': float(item.longitude),
+        'latitude': float(item.latitude),
+        'created_at': item.created_at,
+        'task_id': task_id,
+        'task_status': task_status,
+        'assigned_volunteer_id': assigned_volunteer_id,
+        'assigned_volunteer_name': assigned_volunteer_name,
+        'is_dispatchable': is_dispatchable,
+    }
+
+
 class CommandCenterAPIView(APIView):
     permission_classes = [IsAdminRole]
     """一图统管指挥舱数据：高危求助、志愿者、避难点统一输出。"""
@@ -416,7 +452,11 @@ class CommandCenterAPIView(APIView):
             latitude__isnull=True
         ).exclude(
             longitude__isnull=True
-        ).select_related('resident').order_by('-created_at')[:300]
+        ).select_related(
+            'resident',
+            'volunteer_task',
+            'volunteer_task__volunteer',
+        ).order_by('-created_at')[:300]
 
         volunteers = UserProfile.objects.filter(
             role='volunteer'
@@ -434,25 +474,11 @@ class CommandCenterAPIView(APIView):
 
         return Response({
             'help_requests': [
-                {
-                    'id': item.id,
-                    'resident_name': item.resident.username,
-                    'type': item.request_type,
-                    'type_display': item.get_request_type_display(),
-                    'urgency': item.urgency,
-                    'urgency_display': item.get_urgency_display(),
-                    'status': item.status,
-                    'status_display': item.get_status_display(),
-                    'summary': item.ai_summary,
-                    'description': item.description,
-                    'address': item.address,
-                    'longitude': float(item.longitude),
-                    'latitude': float(item.latitude),
-                    'created_at': item.created_at,
-                } for item in help_requests
+                build_command_help_request_item(item) for item in help_requests
             ],
             'volunteers': [
                 {
+                    'feature_type': 'volunteer',
                     'id': item.user_id,
                     'profile_id': item.id,
                     'username': item.user.username,
@@ -467,6 +493,7 @@ class CommandCenterAPIView(APIView):
             ],
             'shelters': [
                 {
+                    'feature_type': 'shelter',
                     'id': item.id,
                     'name': item.name,
                     'address': item.address,

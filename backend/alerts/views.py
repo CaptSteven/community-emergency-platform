@@ -26,10 +26,31 @@ class WarningViewSet(viewsets.ModelViewSet):
 
             users = User.objects.filter(profile__role__in=['resident', 'volunteer'])
             for user in users:
+                role = getattr(getattr(user, 'profile', None), 'role', '')
+
+                if warning.level == 'red':
+                    if role == 'volunteer':
+                        title = '红色预警待命提醒'
+                        content = (
+                            f'【红色预警】{warning.title}\n\n'
+                            f'{warning.content}\n\n'
+                            '请保持手机在线，关注后续任务调度，提前做好服务准备。'
+                        )
+                    else:
+                        title = '红色预警强提醒'
+                        content = (
+                            f'【红色预警】{warning.title}\n\n'
+                            f'{warning.content}\n\n'
+                            '请立即关注社区通知，注意自身安全，必要时前往开放避难点。'
+                        )
+                else:
+                    title = '新的灾害预警'
+                    content = f'{warning.title}：{warning.content}'
+
                 create_notification(
                     recipient=user,
-                    title='新的灾害预警',
-                    content=f'{warning.title}：{warning.content}',
+                    title=title,
+                    content=content,
                     category='warning',
                     related_type='warning',
                     related_id=warning.id
@@ -49,9 +70,9 @@ class WarningViewSet(viewsets.ModelViewSet):
         for resident in residents:
             create_notification(
                 recipient=resident,
-                title='红色预警强提醒：请立即关注',
+                title='应急预案已启动',
                 content=f'{warning.title} 已启动应急预案，请关注社区通知，必要时前往开放避难点。',
-                category='warning',
+                category='system',
                 related_type='warning',
                 related_id=warning.id
             )
