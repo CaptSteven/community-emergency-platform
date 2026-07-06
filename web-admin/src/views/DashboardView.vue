@@ -32,9 +32,11 @@
       :title="`当前有 ${overview.critical_pending_request_count} 条高优先级待处理求助，请尽快分配志愿者。`"
     />
 
+    <div class="section-title">应急求助概览</div>
     <el-row :gutter="18">
       <el-col :span="6">
         <div class="stat-card">
+          <div class="stat-icon">📊</div>
           <div class="stat-label">总求助数</div>
           <div class="stat-value">{{ overview.help_request_count || 0 }}</div>
           <div class="stat-desc">社区居民累计求助</div>
@@ -43,6 +45,7 @@
 
       <el-col :span="6">
         <div class="stat-card warning">
+          <div class="stat-icon">⏳</div>
           <div class="stat-label">待处理求助</div>
           <div class="stat-value">{{ overview.pending_request_count || 0 }}</div>
           <div class="stat-desc">需要管理员尽快分配</div>
@@ -51,6 +54,7 @@
 
       <el-col :span="6">
         <div class="stat-card success">
+          <div class="stat-icon">🆕</div>
           <div class="stat-label">今日新增求助</div>
           <div class="stat-value">{{ overview.today_request_count || 0 }}</div>
           <div class="stat-desc">当天居民提交数量</div>
@@ -59,6 +63,7 @@
 
       <el-col :span="6">
         <div class="stat-card danger">
+          <div class="stat-icon">🚨</div>
           <div class="stat-label">高优先级待处理</div>
           <div class="stat-value">{{ overview.critical_pending_request_count || 0 }}</div>
           <div class="stat-desc">高/紧急且尚未处理</div>
@@ -66,31 +71,38 @@
       </el-col>
     </el-row>
 
-    <div class="section-title">社区长期服务</div>
+    <div class="section-title section-title--service">
+      <span class="section-badge">社区服务</span>社区长期服务
+      <span class="section-sub">日常上门服务与居家关怀，是平台的主要功能</span>
+    </div>
     <el-row :gutter="18" class="service-kpi-row">
       <el-col :span="6">
-        <div class="stat-card">
+        <div class="stat-card service-card">
+          <div class="stat-icon">🤝</div>
           <div class="stat-label">生效服务计划</div>
           <div class="stat-value">{{ serviceOverview.active_subscriptions || 0 }}</div>
           <div class="stat-desc">覆盖 {{ serviceOverview.covered_residents || 0 }} 位居民</div>
         </div>
       </el-col>
       <el-col :span="6">
-        <div class="stat-card success">
+        <div class="stat-card service-card success">
+          <div class="stat-icon">🚪</div>
           <div class="stat-label">本周上门工单</div>
           <div class="stat-value">{{ serviceOverview.visits_this_week || 0 }}</div>
           <div class="stat-desc">已完成 {{ serviceOverview.completed_this_week || 0 }} 单</div>
         </div>
       </el-col>
       <el-col :span="6">
-        <div class="stat-card warning">
+        <div class="stat-card service-card warning">
+          <div class="stat-icon">🔧</div>
           <div class="stat-label">进行中工单</div>
           <div class="stat-value">{{ serviceOverview.pending_visits || 0 }}</div>
           <div class="stat-desc">已排班 / 服务中</div>
         </div>
       </el-col>
       <el-col :span="6">
-        <div class="stat-card danger">
+        <div class="stat-card service-card danger">
+          <div class="stat-icon">📮</div>
           <div class="stat-label">待人工派单</div>
           <div class="stat-value">{{ serviceOverview.unassigned_visits || 0 }}</div>
           <div class="stat-desc">暂无匹配志愿者</div>
@@ -98,9 +110,11 @@
       </el-col>
     </el-row>
 
+    <div class="section-title">运行状态与资源</div>
     <el-row :gutter="18" class="summary-row">
       <el-col :span="6">
         <div class="stat-card purple">
+          <div class="stat-icon">✅</div>
           <div class="stat-label">任务完成率</div>
           <div class="stat-value">{{ overview.task_completion_rate || 0 }}%</div>
           <div class="stat-desc">志愿者任务闭环情况</div>
@@ -109,6 +123,7 @@
 
       <el-col :span="6">
         <div class="stat-card cyan">
+          <div class="stat-icon">⚠️</div>
           <div class="stat-label">生效预警</div>
           <div class="stat-value">{{ overview.active_warning_count || 0 }}</div>
           <div class="stat-desc">当前仍在生效的灾害预警</div>
@@ -117,6 +132,7 @@
 
       <el-col :span="6">
         <div class="stat-card green">
+          <div class="stat-icon">🙋</div>
           <div class="stat-label">可用志愿者</div>
           <div class="stat-value">{{ overview.available_volunteer_count || 0 }}</div>
           <div class="stat-desc">当前可被分配任务</div>
@@ -125,6 +141,7 @@
 
       <el-col :span="6">
         <div class="stat-card red">
+          <div class="stat-icon">📦</div>
           <div class="stat-label">低库存物资</div>
           <div class="stat-value">{{ overview.low_stock_material_count || 0 }}</div>
           <div class="stat-desc">库存低于预警阈值</div>
@@ -849,70 +866,156 @@ onBeforeUnmount(() => {
 }
 
 .section-title {
-  margin: 22px 2px 12px;
-  font-size: 16px;
+  margin: 24px 2px 14px;
+  font-size: 17px;
   font-weight: 700;
   color: #1f2937;
   border-left: 4px solid #2563eb;
-  padding-left: 10px;
+  padding-left: 12px;
+  line-height: 1.4;
+}
+
+/* 社区服务分区：作为主功能更突出（绿色强调 + 徽标 + 副标题） */
+.section-title--service {
+  border-left-color: #16a34a;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+  font-size: 18px;
+}
+
+.section-badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.28);
+}
+
+.section-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: #64748b;
 }
 
 .service-kpi-row {
   margin-bottom: 4px;
+  /* 主功能区块用柔和绿意底衬托，视觉上更突出 */
+  padding: 6px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.06), rgba(37, 99, 235, 0.04));
 }
 
 .stat-card {
-  min-height: 136px;
+  position: relative;
+  overflow: hidden;
+  min-height: 140px;
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: white;
-  border-radius: 18px;
+  border-radius: 16px;
   padding: 22px;
-  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.24);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.3);
+}
+
+/* 卡片右上角柔光装饰 */
+.stat-card::after {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -30px;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* 右上角大号 emoji 图标 */
+.stat-icon {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  font-size: 30px;
+  line-height: 1;
+  opacity: 0.9;
+  z-index: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
 }
 
 .stat-card.warning {
   background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 8px 22px rgba(245, 158, 11, 0.26);
 }
 
 .stat-card.success {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #16a34a, #059669);
+  box-shadow: 0 8px 22px rgba(22, 163, 74, 0.26);
 }
 
 .stat-card.danger {
   background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 8px 22px rgba(239, 68, 68, 0.26);
 }
 
 .stat-card.purple {
   background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  box-shadow: 0 8px 22px rgba(139, 92, 246, 0.26);
 }
 
 .stat-card.cyan {
   background: linear-gradient(135deg, #06b6d4, #0891b2);
+  box-shadow: 0 8px 22px rgba(6, 182, 212, 0.26);
 }
 
 .stat-card.green {
   background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 8px 22px rgba(34, 197, 94, 0.26);
 }
 
 .stat-card.red {
   background: linear-gradient(135deg, #f43f5e, #be123c);
+  box-shadow: 0 8px 22px rgba(244, 63, 94, 0.26);
+}
+
+/* 服务卡片：更高一点、白色描边，强调主功能地位 */
+.service-card {
+  min-height: 150px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 .stat-label {
+  position: relative;
+  z-index: 1;
   font-size: 15px;
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
 .stat-value {
-  margin-top: 10px;
-  font-size: 34px;
+  position: relative;
+  z-index: 1;
+  margin-top: 12px;
+  font-size: 36px;
   font-weight: 800;
+  letter-spacing: 0.5px;
 }
 
 .stat-desc {
+  position: relative;
+  z-index: 1;
   margin-top: 8px;
   font-size: 13px;
-  opacity: 0.85;
+  opacity: 0.88;
 }
 
 .chart-row {

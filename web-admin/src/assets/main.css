@@ -1,3 +1,23 @@
+/* ===== 统一设计变量（社区服务平台）===== */
+:root {
+  /* 品牌与状态色 */
+  --brand: #2563eb;          /* 主色（品牌/主按钮/激活态） */
+  --brand-dark: #1d4ed8;
+  --service: #16a34a;        /* 社区服务强调色（绿） */
+  --warning: #f59e0b;        /* 警示（橙） */
+  --danger: #ef4444;         /* 危险（红） */
+  --canceled: #94a3b8;       /* 已取消（灰） */
+
+  /* 文本层级 */
+  --text-primary: #1f2937;
+  --text-secondary: #64748b;
+
+  /* 卡片与阴影 */
+  --card-radius: 14px;
+  --card-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  --card-shadow-hover: 0 10px 28px rgba(15, 23, 42, 0.1);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -5,12 +25,39 @@
 body {
   margin: 0;
   font-family: "Microsoft YaHei", Arial, sans-serif;
-  background: #f3f6fb;
-  color: #1f2937;
+  /* 柔和渐变背景，层次更细腻 */
+  background: linear-gradient(180deg, #f5f8fd 0%, #eef3fb 100%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
   text-decoration: none;
+}
+
+/* 统一美化滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .page-container {
@@ -21,13 +68,20 @@ a {
   font-size: 22px;
   font-weight: 700;
   margin-bottom: 18px;
+  color: var(--text-primary);
 }
 
 .card {
   background: #ffffff;
-  border-radius: 14px;
+  border-radius: var(--card-radius);
   padding: 18px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--card-shadow);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.card:hover {
+  box-shadow: var(--card-shadow-hover);
 }
 
 .chart-box {
@@ -72,11 +126,77 @@ a {
 }
 
 .danger-text {
-  color: #dc2626;
+  color: var(--danger);
   font-weight: 700;
 }
 
 .success-text {
-  color: #16a34a;
+  color: var(--service);
   font-weight: 700;
+}
+
+/* ===== Element Plus 增强（在既有组件上做柔化，不改变结构）===== */
+/* 主按钮：品牌色 + 微阴影 + hover 反馈，层级更分明 */
+.el-button--primary {
+  --el-button-bg-color: var(--brand);
+  --el-button-border-color: var(--brand);
+  --el-button-hover-bg-color: var(--brand-dark);
+  --el-button-hover-border-color: var(--brand-dark);
+  --el-button-active-bg-color: var(--brand-dark);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
+}
+
+.el-button {
+  border-radius: 10px;
+  font-weight: 600;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.el-button:active {
+  transform: translateY(1px);
+}
+
+/* 卡片圆角与柔和阴影统一 */
+.el-card {
+  border-radius: var(--card-radius);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  box-shadow: var(--card-shadow);
+}
+
+/* 表格：更清晰的表头与行分隔，字号偏大易读 */
+.el-table {
+  font-size: 14px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.el-table th.el-table__cell {
+  background: #f8fafc !important;
+  color: #334155;
+  font-weight: 700;
+}
+
+/* 输入框圆角柔化 */
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: 10px;
+}
+
+/* 标签圆润 */
+.el-tag {
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* 弹窗圆角与阴影 */
+.el-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* 分页控件圆角 */
+.el-pagination .el-pager li,
+.el-pagination .btn-prev,
+.el-pagination .btn-next {
+  border-radius: 8px;
 }

@@ -14,6 +14,52 @@
       </div>
     </div>
 
+    <!-- 全景指标条：社区服务主线 + 应急调度关键数据一屏统管 -->
+    <div class="kpi-strip">
+      <div class="kpi-card kpi-service">
+        <div class="kpi-icon">🛎️</div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ serviceOverview.active_subscriptions ?? '—' }}</div>
+          <div class="kpi-label">在管服务计划</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-service">
+        <div class="kpi-icon">🧓</div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ serviceOverview.covered_residents ?? '—' }}</div>
+          <div class="kpi-label">覆盖居民</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-service">
+        <div class="kpi-icon">🗓️</div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ serviceOverview.visits_this_week ?? '—' }}</div>
+          <div class="kpi-label">本周排班工单</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-danger">
+        <div class="kpi-icon">🆘</div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ dispatchableCount }}</div>
+          <div class="kpi-label">可调度求助</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-primary">
+        <div class="kpi-icon">🧑‍🤝‍🧑</div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ availableVolunteerCount }}</div>
+          <div class="kpi-label">空闲志愿者</div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-success">
+        <div class="kpi-icon">🏠</div>
+        <div class="kpi-body">
+          <div class="kpi-value">{{ openShelterCount }}</div>
+          <div class="kpi-label">开放避难点</div>
+        </div>
+      </div>
+    </div>
+
     <div class="command-grid">
       <div class="map-panel card">
         <div class="legend-row">
@@ -97,6 +143,8 @@ const volunteers = ref([])
 const shelters = ref([])
 const draggedVolunteer = ref(null)
 const highlightedRequestId = ref(null)
+// 社区服务总览指标（顶部指标条用）；best-effort 加载，失败不影响地图调度
+const serviceOverview = ref({})
 
 let commandMap = null
 let mapScriptPromise = null
@@ -131,6 +179,11 @@ const statusMarkerColor = status => {
 
 const pendingRequests = computed(() => helpRequests.value.filter(item => item.is_dispatchable === true || (item.status === 'pending' && !item.assigned_volunteer_id)))
 const availableVolunteers = computed(() => volunteers.value.filter(item => item.is_available))
+
+// 顶部指标条用的派生统计（全部基于已加载数据，不新增依赖）
+const dispatchableCount = computed(() => pendingRequests.value.length)
+const availableVolunteerCount = computed(() => availableVolunteers.value.length)
+const openShelterCount = computed(() => shelters.value.filter(item => item.is_available).length)
 
 const loadBaiduMapScript = () => {
   if (window.BMapGL) {
@@ -558,6 +611,16 @@ const renderMap = async () => {
   }
 }
 
+// 社区服务总览：独立 best-effort 加载，任何失败都不影响地图与调度主流程
+const loadServiceOverview = async () => {
+  try {
+    serviceOverview.value = await request.get('/analytics/service-overview/') || {}
+  } catch (error) {
+    // 静默降级：指标条显示占位符“—”，不打断指挥舱
+    serviceOverview.value = {}
+  }
+}
+
 const loadData = async () => {
   loading.value = true
   try {
@@ -569,6 +632,8 @@ const loadData = async () => {
   } finally {
     loading.value = false
   }
+  // 指标条数据与地图解耦，放在主流程之后单独刷新
+  loadServiceOverview()
 }
 
 const dropAssign = async helpRequest => {
@@ -619,6 +684,78 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+/* 全景指标条 */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  border-left: 4px solid #94a3b8;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
+}
+
+.kpi-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 21px;
+  background: #f1f5f9;
+  flex: none;
+}
+
+.kpi-value {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #1e293b;
+}
+
+.kpi-label {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* 分类强调色，与统一设计语言一致 */
+.kpi-service { border-left-color: #16a34a; }
+.kpi-service .kpi-icon { background: #dcfce7; }
+.kpi-primary { border-left-color: #2563eb; }
+.kpi-primary .kpi-icon { background: #dbeafe; }
+.kpi-danger { border-left-color: #ef4444; }
+.kpi-danger .kpi-icon { background: #fee2e2; }
+.kpi-success { border-left-color: #16a34a; }
+.kpi-success .kpi-icon { background: #dcfce7; }
+
+@media (max-width: 1200px) {
+  .kpi-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .command-grid {

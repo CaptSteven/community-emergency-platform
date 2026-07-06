@@ -215,16 +215,25 @@ struct ResidentHomePage {
       })
       .borderRadius({ bottomLeft: 28, bottomRight: 28 })
 
-      // 社区长期服务主入口
+      // 社区长期服务主入口（居民端首要入口，突出的渐变卡片）
       Row() {
-        Button('🛎️ 我的社区服务 · 申请周期上门服务')
-          .width('100%').height(50).fontSize(15).fontWeight(FontWeight.Medium)
-          .fontColor(Color.White).borderRadius(Theme.RADIUS)
-          .linearGradient({ angle: 90, colors: [[Theme.SUCCESS, 0.0], [Theme.TEAL, 1.0]] })
-          .onClick(() => { router.pushUrl({ url: 'pages/ResidentServicePage' }) })
+        Text('🛎️')
+          .fontSize(30).width(54).height(54).textAlign(TextAlign.Center)
+          .backgroundColor('#33FFFFFF').borderRadius(16)
+        Column() {
+          Text('我的社区服务')
+            .fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Color.White)
+          Text('申请周期上门 · 长者关怀 · 健康记录')
+            .fontSize(Theme.FS_SMALL).fontColor('#E0F2F1').margin({ top: 4 })
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 14 })
+        Text('›').fontSize(30).fontColor(Color.White)
       }
-      .width('100%')
-      .padding({ left: 16, right: 16, top: 16 })
+      .width('90%').padding({ left: 16, right: 18, top: 14, bottom: 14 })
+      .margin({ top: 16 }).alignItems(VerticalAlign.Center)
+      .borderRadius(Theme.RADIUS)
+      .linearGradient({ angle: 120, colors: [[Theme.SUCCESS, 0.0], [Theme.TEAL, 1.0]] })
+      .shadow({ radius: 16, color: '#3316A34A', offsetX: 0, offsetY: 6 })
+      .onClick(() => { router.pushUrl({ url: 'pages/ResidentServicePage' }) })
 
       // 三个快捷入口卡片（应急）
       Row() {

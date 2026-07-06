@@ -163,6 +163,22 @@ struct VolunteerServicePage {
     }
   }
 
+  // 单项健康小徽章：标签 + 数值，醒目分隔
+  @Builder
+  HealthBadge(label: string, value: string, unit: string) {
+    Column() {
+      Text(label).fontSize(12).fontColor(Theme.TEXT_MUTED)
+      Row() {
+        Text(value).fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.SUCCESS)
+        if (unit !== '') {
+          Text(unit).fontSize(12).fontColor(Theme.TEXT_MUTED).margin({ left: 2, bottom: 2 })
+        }
+      }.alignItems(VerticalAlign.Bottom).margin({ top: 2 })
+    }
+    .layoutWeight(1).alignItems(HorizontalAlign.Center)
+    .padding({ top: 8, bottom: 8 })
+  }
+
   @Builder
   VisitCard(item: ServiceVisitItem) {
     Column() {
@@ -192,15 +208,23 @@ struct VolunteerServicePage {
 
       if (item.status === 'completed' && item.needs_health_record) {
         Column() {
-          Text('本次健康记录').fontSize(13).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY)
-          Text(`血压 ${item.systolic ?? '—'}/${item.diastolic ?? '—'} mmHg · 心率 ${item.heart_rate ?? '—'} · 体温 ${item.temperature ?? '—'}℃`)
-            .fontSize(12).fontColor(Theme.TEXT_BODY).margin({ top: 4 })
+          Row() {
+            Text('❤️').fontSize(14)
+            Text('本次健康记录').fontSize(Theme.FS_SMALL).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ left: 6 })
+          }.width('100%')
+          Row() {
+            this.HealthBadge('血压', `${item.systolic ?? '—'}/${item.diastolic ?? '—'}`, 'mmHg')
+            Divider().vertical(true).height(28).color(Theme.BORDER)
+            this.HealthBadge('心率', `${item.heart_rate ?? '—'}`, '次/分')
+            Divider().vertical(true).height(28).color(Theme.BORDER)
+            this.HealthBadge('体温', `${item.temperature ?? '—'}`, '℃')
+          }.width('100%').margin({ top: 6 })
           if (item.health_note !== '') {
-            Text(item.health_note).fontSize(12).fontColor(Theme.TEXT_MUTED).margin({ top: 4 })
+            Text(item.health_note).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_BODY).margin({ top: 6 })
           }
         }
-        .width('100%').alignItems(HorizontalAlign.Start).padding(10).margin({ top: 10 })
-        .backgroundColor('#F0FDF4').borderRadius(Theme.RADIUS_SM)
+        .width('100%').alignItems(HorizontalAlign.Start).padding(12).margin({ top: 12 })
+        .backgroundColor(Theme.SUCCESS_LIGHT).borderRadius(Theme.RADIUS_SM)
       }
 
       if (item.latitude !== null && item.longitude !== null) {

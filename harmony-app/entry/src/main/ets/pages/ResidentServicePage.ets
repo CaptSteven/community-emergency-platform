@@ -93,19 +93,38 @@ struct ResidentServicePage {
     Column() {
       Row() {
         Text(`${item.service_type_icon} ${item.service_type_name}`)
-          .fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).layoutWeight(1)
+          .fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).layoutWeight(1)
         Text(item.is_active ? '生效中' : '已暂停')
-          .fontSize(12).fontColor(Color.White)
-          .padding({ left: 10, right: 10, top: 3, bottom: 3 })
-          .backgroundColor(item.is_active ? Theme.SUCCESS : '#9CA3AF').borderRadius(12)
+          .fontSize(13).fontColor(Color.White)
+          .padding({ left: 12, right: 12, top: 4, bottom: 4 })
+          .backgroundColor(item.is_active ? Theme.SUCCESS : Theme.TEXT_MUTED).borderRadius(12)
       }.width('100%')
-      Text(`${item.frequency_display} · ${item.preferred_weekday_display}${item.preferred_time !== '' ? ' ' + item.preferred_time : ''}`)
-        .fontSize(13).fontColor(Theme.TEXT_BODY).margin({ top: 8 })
+      Row() {
+        Text('🗓️').fontSize(14)
+        Text(`${item.frequency_display} · ${item.preferred_weekday_display}${item.preferred_time !== '' ? ' ' + item.preferred_time : ''}`)
+          .fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ left: 6 })
+      }.width('100%').margin({ top: 10 })
     }
-    .width('100%').padding(14).alignItems(HorizontalAlign.Start)
+    .width('100%').padding(16).alignItems(HorizontalAlign.Start)
     .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-    .shadow({ radius: 12, color: '#12000000', offsetX: 0, offsetY: 3 })
-    .margin({ bottom: 10 })
+    .shadow({ radius: 16, color: '#0F0F172A', offsetX: 0, offsetY: 4 })
+    .margin({ bottom: 12 })
+  }
+
+  // 单项健康小徽章：标签 + 数值，醒目分隔，老人也看得清
+  @Builder
+  HealthBadge(label: string, value: string, unit: string) {
+    Column() {
+      Text(label).fontSize(12).fontColor(Theme.TEXT_MUTED)
+      Row() {
+        Text(value).fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.SUCCESS)
+        if (unit !== '') {
+          Text(unit).fontSize(12).fontColor(Theme.TEXT_MUTED).margin({ left: 2, bottom: 2 })
+        }
+      }.alignItems(VerticalAlign.Bottom).margin({ top: 2 })
+    }
+    .layoutWeight(1).alignItems(HorizontalAlign.Center)
+    .padding({ top: 8, bottom: 8 })
   }
 
   @Builder
@@ -113,31 +132,42 @@ struct ResidentServicePage {
     Column() {
       Row() {
         Text(`${item.service_type_icon} ${item.service_type_name}`)
-          .fontSize(15).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).layoutWeight(1)
+          .fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).layoutWeight(1)
         Text(item.status_display)
-          .fontSize(12).fontColor(Color.White)
-          .padding({ left: 10, right: 10, top: 3, bottom: 3 })
+          .fontSize(13).fontColor(Color.White)
+          .padding({ left: 12, right: 12, top: 4, bottom: 4 })
           .backgroundColor(Theme.statusColor(item.status)).borderRadius(12)
       }.width('100%')
       Row() {
-        Text('📅').fontSize(12)
-        Text(item.scheduled_date).fontSize(12).fontColor(Theme.TEXT_MUTED).margin({ left: 4 }).layoutWeight(1)
+        Text('📅').fontSize(14)
+        Text(item.scheduled_date).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ left: 4 }).layoutWeight(1)
         if (item.volunteer_name !== '') {
-          Text(`志愿者：${item.volunteer_name}`).fontSize(12).fontColor(Theme.TEXT_MUTED)
+          Text(`志愿者：${item.volunteer_name}`).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED)
         }
-      }.width('100%').margin({ top: 8 })
+      }.width('100%').margin({ top: 10 })
       if (item.status === 'completed' && item.needs_health_record) {
-        Text(`血压 ${item.systolic ?? '—'}/${item.diastolic ?? '—'} · 心率 ${item.heart_rate ?? '—'} · 体温 ${item.temperature ?? '—'}℃`)
-          .fontSize(12).fontColor(Theme.SUCCESS).margin({ top: 8 })
+        // 健康记录：分隔 + 徽章展示，更醒目易读
+        Row() {
+          Text('❤️').fontSize(14)
+          Text('本次健康记录').fontSize(Theme.FS_SMALL).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ left: 6 })
+        }.width('100%').margin({ top: 12, bottom: 6 })
+        Row() {
+          this.HealthBadge('血压', `${item.systolic ?? '—'}/${item.diastolic ?? '—'}`, 'mmHg')
+          Divider().vertical(true).height(28).color(Theme.BORDER)
+          this.HealthBadge('心率', `${item.heart_rate ?? '—'}`, '次/分')
+          Divider().vertical(true).height(28).color(Theme.BORDER)
+          this.HealthBadge('体温', `${item.temperature ?? '—'}`, '℃')
+        }
+        .width('100%').backgroundColor(Theme.SUCCESS_LIGHT).borderRadius(Theme.RADIUS_SM)
         if (item.health_note !== '') {
-          Text(item.health_note).fontSize(12).fontColor(Theme.TEXT_MUTED).margin({ top: 4 })
+          Text(item.health_note).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_BODY).margin({ top: 8 })
         }
       }
     }
-    .width('100%').padding(14).alignItems(HorizontalAlign.Start)
+    .width('100%').padding(16).alignItems(HorizontalAlign.Start)
     .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-    .shadow({ radius: 12, color: '#12000000', offsetX: 0, offsetY: 3 })
-    .margin({ bottom: 10 })
+    .shadow({ radius: 16, color: '#0F0F172A', offsetX: 0, offsetY: 4 })
+    .margin({ bottom: 12 })
   }
 
   @Builder
@@ -233,21 +263,38 @@ struct ResidentServicePage {
       } else {
         Scroll() {
           Column() {
-            Text('我的服务计划').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT)
-              .width('100%').margin({ top: 4, bottom: 10 })
+            Row() {
+              Column().width(4).height(18).backgroundColor(Theme.SUCCESS).borderRadius(2)
+              Text('我的服务计划').fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ left: 10 })
+            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 4, bottom: 12 })
             if (this.subscriptions.length === 0) {
-              Text('还没有服务计划，点击右上角「申请服务」').fontSize(13).fontColor(Theme.TEXT_MUTED)
-                .width('100%').margin({ bottom: 12 })
+              Column() {
+                Text('🗒️').fontSize(40)
+                Text('还没有服务计划').fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
+                Text('点击右上角「申请服务」预约上门').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
+              }
+              .width('100%').padding({ top: 24, bottom: 24 })
+              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+              .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS).margin({ bottom: 12 })
             } else {
               ForEach(this.subscriptions, (item: ServiceSubscriptionItem) => {
                 this.SubscriptionCard(item)
               }, (item: ServiceSubscriptionItem) => `s-${item.id}`)
             }
 
-            Text('上门记录').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT)
-              .width('100%').margin({ top: 12, bottom: 10 })
+            Row() {
+              Column().width(4).height(18).backgroundColor(Theme.PRIMARY).borderRadius(2)
+              Text('上门记录').fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ left: 10 })
+            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 12, bottom: 12 })
             if (this.visits.length === 0) {
-              Text('暂无上门记录').fontSize(13).fontColor(Theme.TEXT_MUTED).width('100%')
+              Column() {
+                Text('🚪').fontSize(40)
+                Text('暂无上门记录').fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
+                Text('志愿者上门服务后会显示在这里').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
+              }
+              .width('100%').padding({ top: 24, bottom: 24 })
+              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+              .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
             } else {
               ForEach(this.visits, (item: ServiceVisitItem) => {
                 this.VisitCard(item)

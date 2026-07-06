@@ -285,30 +285,43 @@ struct VolunteerHomePage {
         colors: [[Theme.PRIMARY_LIGHT, 0.0], [Theme.PRIMARY, 0.55], [Theme.PRIMARY_DARK, 1.0]]
       }).borderRadius({ bottomLeft: 28, bottomRight: 28 })
 
+      // 社区长期服务主入口（志愿者端首要入口，突出的渐变卡片，与头部叠层）
+      Row() {
+        Text('🩺')
+          .fontSize(30).width(54).height(54).textAlign(TextAlign.Center)
+          .backgroundColor('#33FFFFFF').borderRadius(16)
+        Column() {
+          Text('我的上门服务')
+            .fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Color.White)
+          Text('社区长期服务 · 长者关怀 · 录入健康记录')
+            .fontSize(Theme.FS_SMALL).fontColor('#E0F2F1').margin({ top: 4 })
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 14 })
+        Text('›').fontSize(30).fontColor(Color.White)
+      }
+      .width('90%').padding({ left: 16, right: 18, top: 14, bottom: 14 })
+      .margin({ top: -16 }).alignItems(VerticalAlign.Center)
+      .borderRadius(Theme.RADIUS)
+      .linearGradient({ angle: 120, colors: [[Theme.SUCCESS, 0.0], [Theme.TEAL, 1.0]] })
+      .shadow({ radius: 16, color: '#3316A34A', offsetX: 0, offsetY: 6 })
+      .onClick(() => { router.pushUrl({ url: 'pages/VolunteerServicePage' }) })
+
       // 说明 + 刷新卡片
       Column() {
         Row() {
           Text('📋').fontSize(16)
           Text('应急任务由管理员统一指派')
-            .fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).layoutWeight(1).margin({ left: 8 })
-          Text(`${this.tasks.length}`).fontSize(14).fontColor(Theme.TEXT_MUTED)
+            .fontSize(Theme.FS_BODY).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).layoutWeight(1).margin({ left: 8 })
+          Text(`${this.tasks.length}`).fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_MUTED)
         }.width('100%').alignItems(VerticalAlign.Center)
 
-        Button('🩺 我的上门服务（社区长期服务）')
-          .width('100%').height(46).fontSize(15).fontWeight(FontWeight.Medium)
-          .fontColor(Color.White).borderRadius(Theme.RADIUS_SM)
-          .backgroundColor(Theme.SUCCESS)
-          .margin({ top: 12 })
-          .onClick(() => { router.pushUrl({ url: 'pages/VolunteerServicePage' }) })
-
         Button(this.loading ? '刷新中...' : '刷新应急任务')
-          .width('100%').height(42).fontSize(15).fontWeight(FontWeight.Medium)
+          .width('100%').height(44).fontSize(Theme.FS_BODY).fontWeight(FontWeight.Medium)
           .fontColor(Color.White).borderRadius(Theme.RADIUS_SM)
           .linearGradient({ angle: 90, colors: [[Theme.PRIMARY_LIGHT, 0.0], [Theme.PRIMARY_DARK, 1.0]] })
-          .margin({ top: 10 })
+          .margin({ top: 12 })
           .onClick(() => { this.loadTasks() })
       }
-      .width('90%').padding(16).margin({ top: -16 }).alignItems(HorizontalAlign.Start)
+      .width('90%').padding(16).margin({ top: 12 }).alignItems(HorizontalAlign.Start)
       .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
       .shadow({ radius: 16, color: '#14000000', offsetX: 0, offsetY: 4 })
 

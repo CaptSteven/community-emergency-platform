@@ -10,6 +10,7 @@ from notifications.utils import create_notification
 from users.models import UserProfile
 from .models import VolunteerTask, TaskCancellation
 from .serializers import VolunteerTaskSerializer
+from .cancellation import evaluate_cancellation
 
 
 class VolunteerTaskViewSet(viewsets.ModelViewSet):
@@ -156,17 +157,8 @@ class VolunteerTaskViewSet(viewsets.ModelViewSet):
             volunteer_profile.is_available = True
             volunteer_profile.save(update_fields=['is_available'])
 
-            now = timezone.now()
-            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            month_count = TaskCancellation.objects.filter(
-                volunteer=request.user, created_at__gte=month_start
-            ).count()
-
-            revoked = month_count > 7
-            warned = (not revoked) and month_count > 5
-            if revoked:
-                request.user.is_active = False
-                request.user.save(update_fields=['is_active'])
+            # 月度取消管控（与上门服务共用），阈值与撤销逻辑见 tasks.cancellation
+            month_count, warned, revoked = evaluate_cancellation(request.user)
 
         reason_display = dict(TaskCancellation.REASON_CHOICES).get(reason, reason)
         note_part = ('｜' + note) if note else ''

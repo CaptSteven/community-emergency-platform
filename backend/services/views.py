@@ -12,6 +12,7 @@ from rest_framework.response import Response
 
 from notifications.utils import create_notification
 from tasks.models import TaskCancellation
+from tasks.cancellation import evaluate_cancellation
 from .models import ServiceType, ServiceSubscription, ServiceVisit
 from .serializers import (
     ServiceTypeSerializer, ServiceSubscriptionSerializer, ServiceVisitSerializer,
@@ -107,6 +108,22 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
         else:
             serializer.save(resident=serializer.instance.resident)
 
+    @action(detail=True, methods=['post'], url_path='toggle-active')
+    def toggle_active(self, request, pk=None):
+        """暂停/恢复服务计划。管理员可操作任意计划，居民仅可操作自己的。
+
+        权限天然由 get_queryset 收敛：居民 get_object 只能取到本人计划，
+        取不到他人计划（404）；志愿者/其他角色一律取不到。
+        """
+        sub = self.get_object()
+        sub.is_active = not sub.is_active
+        sub.save(update_fields=['is_active'])
+        return Response({
+            'message': '已恢复该服务计划' if sub.is_active else '已暂停该服务计划',
+            'is_active': sub.is_active,
+            'subscription': ServiceSubscriptionSerializer(sub).data,
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='generate-visits')
     def generate_visits(self, request):
         """管理员触发：为所有到期服务计划生成工单并自动轮流派单。"""
@@ -149,15 +166,23 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         user = self.request.user
         base = ServiceVisit.objects.select_related('resident', 'volunteer', 'service_type', 'subscription')
         if is_admin(user):
-            return base.all()
-        profile = _profile(user)
-        if profile is None:
-            return ServiceVisit.objects.none()
-        if profile.role == 'volunteer':
-            return base.filter(volunteer=user)
-        if profile.role == 'resident':
-            return base.filter(resident=user)
-        return ServiceVisit.objects.none()
+            qs = base.all()
+        else:
+            profile = _profile(user)
+            if profile is None:
+                return ServiceVisit.objects.none()
+            if profile.role == 'volunteer':
+                qs = base.filter(volunteer=user)
+            elif profile.role == 'resident':
+                qs = base.filter(resident=user)
+            else:
+                return ServiceVisit.objects.none()
+
+        # ?upcoming=1 只看今天及以后、尚未完成（已排班/服务中）的工单
+        if self.request.query_params.get('upcoming') in ('1', 'true'):
+            today = timezone.now().date()
+            qs = qs.filter(scheduled_date__gte=today, status__in=['assigned', 'processing'])
+        return qs
 
     # 工单只能由系统排班生成、经状态机 action 流转；关闭默认的直接增删改，
     # 防止志愿者用 DELETE 绕过取消管控、居民用 PATCH 伪造健康记录。
@@ -280,16 +305,8 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
                 address=visit.address, latitude=visit.latitude, longitude=visit.longitude,
             )
 
-            now = timezone.now()
-            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            month_count = TaskCancellation.objects.filter(
-                volunteer=request.user, created_at__gte=month_start
-            ).count()
-            revoked = month_count > 7
-            warned = (not revoked) and month_count > 5
-            if revoked:
-                request.user.is_active = False
-                request.user.save(update_fields=['is_active'])
+            # 月度取消管控（与应急任务共用），阈值与撤销逻辑见 tasks.cancellation
+            month_count, warned, revoked = evaluate_cancellation(request.user)
 
         scheduler._notify_new_visit(replacement)
 

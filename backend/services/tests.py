@@ -329,3 +329,120 @@ class AccessControlHardeningTests(APITestCase):
             'service_type': self.stype.id, 'frequency': 'weekly',
         }, format='json')
         self.assertEqual(resp.status_code, 400)
+
+
+class SubscriptionToggleTests(APITestCase):
+    """服务计划暂停/恢复：管理员可操作任意计划，居民仅可操作自己的。"""
+
+    def setUp(self):
+        self.admin = make_user('tg_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('tg_res', 'resident', community=COMMUNITY)
+        self.other = make_user('tg_other', 'resident', community=COMMUNITY)
+        self.vol = make_user('tg_vol', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.stype = ServiceType.objects.create(name='代购', code='tg_buy', required_skill='')
+
+    def _sub(self, resident=None, is_active=True):
+        return ServiceSubscription.objects.create(
+            resident=resident or self.resident, service_type=self.stype,
+            frequency='weekly', is_active=is_active)
+
+    def test_owner_can_pause_and_resume(self):
+        sub = self._sub()
+        self.client.force_authenticate(self.resident)
+        r1 = self.client.post('/api/service-subscriptions/%d/toggle-active/' % sub.id, {}, format='json')
+        self.assertEqual(r1.status_code, 200)
+        self.assertFalse(r1.data['is_active'])
+        sub.refresh_from_db()
+        self.assertFalse(sub.is_active)
+        # 再次调用恢复
+        r2 = self.client.post('/api/service-subscriptions/%d/toggle-active/' % sub.id, {}, format='json')
+        self.assertTrue(r2.data['is_active'])
+
+    def test_admin_can_toggle_any(self):
+        sub = self._sub(resident=self.resident)
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-subscriptions/%d/toggle-active/' % sub.id, {}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['is_active'])
+
+    def test_resident_cannot_toggle_others(self):
+        sub = self._sub(resident=self.other)
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-subscriptions/%d/toggle-active/' % sub.id, {}, format='json')
+        self.assertEqual(resp.status_code, 404)  # get_queryset 收敛后取不到他人计划
+        sub.refresh_from_db()
+        self.assertTrue(sub.is_active)  # 未被改动
+
+    def test_volunteer_cannot_toggle(self):
+        sub = self._sub()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-subscriptions/%d/toggle-active/' % sub.id, {}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+
+class UpcomingVisitsTests(APITestCase):
+    """未来上门筛选与只读分析接口。"""
+
+    def setUp(self):
+        self.admin = make_user('up_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('up_res', 'resident', community=COMMUNITY)
+        self.vol = make_user('up_vol', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.stype = ServiceType.objects.create(name='健康检查', code='up_health', required_skill='医疗')
+
+    def _visit(self, offset_days, status='assigned'):
+        return ServiceVisit.objects.create(
+            service_type=self.stype, resident=self.resident, volunteer=self.vol,
+            scheduled_date=date.today() + timedelta(days=offset_days), status=status)
+
+    def test_upcoming_filter_on_list(self):
+        today_v = self._visit(0)                       # 今天，已排班 -> 命中
+        future_v = self._visit(3)                      # 未来，已排班 -> 命中
+        self._visit(-2)                                # 过去 -> 不命中
+        self._visit(1, status='completed')             # 未来但已完成 -> 不命中
+        self.client.force_authenticate(self.vol)
+        resp = self.client.get('/api/service-visits/?upcoming=1')
+        rows = resp.data if isinstance(resp.data, list) else resp.data.get('results', [])
+        ids = {r['id'] for r in rows}
+        self.assertEqual(ids, {today_v.id, future_v.id})
+
+    def test_upcoming_analytics_endpoint(self):
+        self._visit(0)
+        self._visit(6)
+        self._visit(10)                                # 超出 7 天窗口 -> 不计入
+        self._visit(-1)                                # 过去 -> 不计入
+        self._visit(2, status='cancelled')             # 已取消 -> 不计入
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get('/api/analytics/service-upcoming/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['count'], 2)
+        self.assertEqual(len(resp.data['visits']), 2)
+
+
+class CancellationHelperTests(APITestCase):
+    """共享月度取消管控函数（应急任务与上门服务复用）的直接单元测试。"""
+
+    def setUp(self):
+        self.vol = make_user('ch_vol', 'volunteer', community=COMMUNITY)
+        self.stype = ServiceType.objects.create(name='代购', code='ch_buy', required_skill='')
+        self.resident = make_user('ch_res', 'resident', community=COMMUNITY)
+
+    def _add_cancellations(self, n):
+        for _ in range(n):
+            visit = ServiceVisit.objects.create(
+                service_type=self.stype, resident=self.resident, volunteer=self.vol,
+                scheduled_date=date.today(), status='cancelled')
+            TaskCancellation.objects.create(volunteer=self.vol, visit=visit, reason='family')
+
+    def test_thresholds(self):
+        from tasks.cancellation import evaluate_cancellation
+        self._add_cancellations(5)
+        count, warned, revoked = evaluate_cancellation(self.vol)
+        self.assertEqual((count, warned, revoked), (5, False, False))
+        self._add_cancellations(1)  # ->6
+        count, warned, revoked = evaluate_cancellation(self.vol)
+        self.assertEqual((count, warned, revoked), (6, True, False))
+        self._add_cancellations(2)  # ->8
+        count, warned, revoked = evaluate_cancellation(self.vol)
+        self.assertEqual((count, warned, revoked), (8, False, True))
+        self.vol.refresh_from_db()
+        self.assertFalse(self.vol.is_active)  # 撤销即停用账号

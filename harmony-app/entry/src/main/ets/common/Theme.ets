@@ -21,15 +21,29 @@ export class Theme {
   // 功能强调色
   static readonly DANGER: string = '#EF4444'
   static readonly SUCCESS: string = '#16A34A'
-  static readonly WARN: string = '#EA580C'
+  static readonly WARN: string = '#F59E0B'
   static readonly TEAL: string = '#0D9488'
   static readonly PURPLE: string = '#7C3AED'
+
+  // 浅色底（柔和背景，用于健康记录/提示块，保证易读）
+  static readonly SUCCESS_LIGHT: string = '#F0FDF4'
+  static readonly PRIMARY_LIGHT_BG: string = '#EFF6FF'
+  static readonly WARN_LIGHT: string = '#FFFBEB'
+  static readonly DANGER_LIGHT: string = '#FEF2F2'
 
   // 圆角 / 间距
   static readonly RADIUS: number = 18
   static readonly RADIUS_SM: number = 12
   static readonly GAP: number = 12
   static readonly PAD: number = 16
+
+  // 面向老人的大字号（正文≥14、标题≥16-18，易读）
+  static readonly FS_TITLE: number = 20
+  static readonly FS_SUBTITLE: number = 17
+  static readonly FS_BODY: number = 15
+  static readonly FS_SMALL: number = 13
+  // 老人相关触控目标尺寸（更大更好点）
+  static readonly TAP_H: number = 48
 
   // 预警等级色（red/orange/yellow/blue）
   static levelColor(level: string): string {
@@ -40,14 +54,26 @@ export class Theme {
     return '#64748B'
   }
 
-  // 求助 / 任务状态色
+  // 求助 / 任务状态色（统一：待处理/已排班=橙，处理中/服务中=蓝，已完成=绿，已取消=灰，错过=红）
   static statusColor(status: string): string {
     if (status === 'completed') return '#16A34A'
-    if (status === 'pending') return '#D97706'
-    if (status === 'assigned') return '#2563EB'
-    if (status === 'processing') return '#7C3AED'
+    if (status === 'pending') return '#F59E0B'
+    if (status === 'assigned') return '#F59E0B'
+    if (status === 'processing') return '#2563EB'
     if (status === 'cancelled') return '#94A3B8'
+    if (status === 'missed') return '#EF4444'
     return '#64748B'
+  }
+
+  // 状态浅色底（用于柔和状态徽标/提示背景，含 missed）
+  static statusTint(status: string): string {
+    if (status === 'completed') return '#DCFCE7'
+    if (status === 'pending') return '#FEF3C7'
+    if (status === 'assigned') return '#FEF3C7'
+    if (status === 'processing') return '#DBEAFE'
+    if (status === 'cancelled') return '#F1F5F9'
+    if (status === 'missed') return '#FEE2E2'
+    return '#F1F5F9'
   }
 
   // 紧急程度色（high/medium/low）

@@ -1,39 +1,68 @@
 <template>
-  <div class="page">
+  <div class="page-container">
     <div class="page-header">
-      <h2 style="margin: 0">排班工单看板</h2>
+      <div>
+        <div class="page-title">排班工单看板</div>
+        <div class="page-subtitle">查看周期服务派单情况，可按状态、日期、服务类型筛选，并对未完成工单进行改派。</div>
+      </div>
       <el-button type="success" :loading="generating" @click="generateVisits">生成本周排班</el-button>
     </div>
 
-    <el-card shadow="never" style="margin-bottom: 16px">
+    <div class="card filter-card">
       <el-form :inline="true">
         <el-form-item label="状态">
-          <el-select v-model="filters.status" placeholder="全部" clearable style="width: 140px" @change="loadData">
+          <el-select v-model="filters.status" placeholder="全部" clearable style="width: 140px" @change="handleFilter">
             <el-option v-for="s in STATUS" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </el-form-item>
+        <el-form-item label="服务类型">
+          <el-select v-model="filters.serviceType" placeholder="全部服务" clearable filterable style="width: 180px" @change="handleFilter">
+            <el-option v-for="t in types" :key="t.id" :label="`${t.icon || '🛎️'} ${t.name}`" :value="t.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="日期">
-          <el-date-picker v-model="filters.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" clearable @change="loadData" />
+          <el-date-picker v-model="filters.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" clearable @change="handleFilter" />
         </el-form-item>
         <el-form-item>
           <el-button @click="resetFilters">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </div>
 
-    <el-card shadow="never">
+    <!-- 本页各状态数量小结 -->
+    <div class="stat-bar" v-if="items.length">
+      <div
+        v-for="s in STATUS"
+        :key="s.value"
+        class="stat-chip"
+        :style="{ '--chip-color': STATUS_COLOR[s.value] }"
+      >
+        <span class="stat-dot"></span>
+        <span class="stat-label">{{ s.label }}</span>
+        <span class="stat-num">{{ statusCount[s.value] || 0 }}</span>
+      </div>
+      <div class="stat-chip stat-total">
+        <span class="stat-label">本页合计</span>
+        <span class="stat-num">{{ items.length }}</span>
+      </div>
+    </div>
+
+    <div class="card">
       <el-table :data="items" v-loading="loading" stripe>
         <el-table-column prop="scheduled_date" label="计划日期" width="120" />
         <el-table-column prop="resident_name" label="受益居民" min-width="100" />
-        <el-table-column label="服务" min-width="140">
+        <el-table-column label="服务" min-width="170">
           <template #default="{ row }">
-            <span style="margin-right:6px">{{ row.service_type_icon }}</span>{{ row.service_type_name }}
+            <div class="svc-cell">
+              <span class="svc-icon">{{ row.service_type_icon || '🛎️' }}</span>
+              <span class="svc-name">{{ row.service_type_name }}</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="志愿者" min-width="110">
           <template #default="{ row }">
             <span v-if="row.volunteer_name">{{ row.volunteer_name }}</span>
-            <el-tag v-else type="danger" size="small">待派单</el-tag>
+            <el-tag v-else type="danger" effect="dark" size="small">待派单</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
@@ -46,17 +75,37 @@
             <span v-if="row.systolic || row.temperature">
               血压 {{ row.systolic || '—' }}/{{ row.diastolic || '—' }} · 体温 {{ row.temperature || '—' }}℃
             </span>
-            <span v-else style="color:#94a3b8">—</span>
+            <span v-else class="muted">—</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button size="small" :disabled="!['assigned','processing'].includes(row.status)" @click="openReassign(row)">改派</el-button>
-            <el-button size="small" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" type="primary" plain @click="openDetail(row)">详情</el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <div class="empty-state">
+            <div class="empty-emoji">📋</div>
+            <div class="empty-title">暂无排班工单</div>
+            <div class="empty-tip">调整上方筛选条件，或点击「生成本周排班」派发到期的服务计划</div>
+          </div>
+        </template>
       </el-table>
-    </el-card>
+
+      <el-pagination
+        v-if="pagination.total > 0"
+        class="pagination"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="pagination.total"
+        :current-page="pagination.page"
+        :page-size="pagination.pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        @size-change="handleSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
 
     <el-dialog v-model="reassignVisible" title="改派志愿者" width="420px">
       <el-form label-width="80px">
@@ -81,7 +130,9 @@
         <el-descriptions-item label="服务类型">{{ current.service_type_icon }} {{ current.service_type_name }}</el-descriptions-item>
         <el-descriptions-item label="志愿者">{{ current.volunteer_name || '待派单' }}</el-descriptions-item>
         <el-descriptions-item label="计划日期">{{ current.scheduled_date }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ current.status_display }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="statusType(current.status)" effect="dark" size="small">{{ current.status_display }}</el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="服务地址">{{ current.address || '—' }}</el-descriptions-item>
         <el-descriptions-item v-if="current.needs_health_record" label="血压">{{ current.systolic || '—' }}/{{ current.diastolic || '—' }} mmHg</el-descriptions-item>
         <el-descriptions-item v-if="current.needs_health_record" label="心率">{{ current.heart_rate || '—' }} 次/分</el-descriptions-item>
@@ -100,9 +151,10 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '../api/request'
+import { buildPageParams, unwrapPaginated } from '../utils/pagination'
 
 const STATUS = [
   { value: 'assigned', label: '已排班' },
@@ -112,8 +164,13 @@ const STATUS = [
   { value: 'missed', label: '已错过' }
 ]
 
+// 统一状态色
+const STATUS_COLOR = {
+  assigned: '#F59E0B', processing: '#2563EB', completed: '#16A34A', cancelled: '#94A3B8', missed: '#EF4444'
+}
+
 const statusType = s => ({
-  assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'danger', missed: 'info'
+  assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'info', missed: 'danger'
 }[s] || 'info')
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/api\/?$/, '')
@@ -124,32 +181,60 @@ const saving = ref(false)
 const generating = ref(false)
 const items = ref([])
 const volunteers = ref([])
+const types = ref([])
 const current = ref(null)
 const reassignVisible = ref(false)
 const detailVisible = ref(false)
 const reassignVolunteer = ref(null)
 
-const filters = reactive({ status: '', date: '' })
+const filters = reactive({ status: '', serviceType: '', date: '' })
+
+// 分页（兼容后端返回数组或 {count,results}）
+const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
+
+// 本页各状态数量小结
+const statusCount = computed(() => {
+  const map = {}
+  for (const row of items.value) {
+    map[row.status] = (map[row.status] || 0) + 1
+  }
+  return map
+})
 
 const loadData = async () => {
   loading.value = true
   try {
-    const params = { page_size: 200 }
+    const params = { ...buildPageParams(pagination) }
     if (filters.status) params.status = filters.status
+    if (filters.serviceType) params.service_type = filters.serviceType
     if (filters.date) params.scheduled_date = filters.date
     const data = await request.get('/service-visits/', { params })
-    items.value = Array.isArray(data) ? data : (data.results || [])
+    const page = unwrapPaginated(data)
+    items.value = page.list
+    pagination.total = page.total
   } catch (e) { /* 拦截器提示 */ } finally { loading.value = false }
 }
 
-const loadVolunteers = async () => {
+const handleSizeChange = size => { pagination.pageSize = size; pagination.page = 1; loadData() }
+const handlePageChange = page => { pagination.page = page; loadData() }
+const handleFilter = () => { pagination.page = 1; loadData() }
+
+const loadRefs = async () => {
   try {
-    const v = await request.get('/users/', { params: { role: 'volunteer', page_size: 200 } })
-    volunteers.value = Array.isArray(v) ? v : (v.results || [])
+    const [v, t] = await Promise.all([
+      request.get('/users/', { params: { role: 'volunteer', page_size: 200 } }),
+      request.get('/service-types/', { params: { is_active: true, page_size: 200 } })
+    ])
+    volunteers.value = unwrapPaginated(v).list
+    types.value = unwrapPaginated(t).list
   } catch (e) { /* 拦截器提示 */ }
 }
 
-const resetFilters = () => { filters.status = ''; filters.date = ''; loadData() }
+const resetFilters = () => {
+  filters.status = ''; filters.serviceType = ''; filters.date = ''
+  pagination.page = 1
+  loadData()
+}
 
 const openReassign = row => {
   current.value = row
@@ -179,9 +264,40 @@ const generateVisits = async () => {
   } catch (e) { /* 拦截器提示 */ } finally { generating.value = false }
 }
 
-onMounted(() => { loadData(); loadVolunteers() })
+onMounted(() => { loadData(); loadRefs() })
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+/* 服务单元格：大 emoji + 名称 */
+.svc-cell { display: flex; align-items: center; gap: 10px; }
+.svc-icon {
+  font-size: 22px; line-height: 1;
+  width: 38px; height: 38px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #eff6ff; border-radius: 10px;
+}
+.svc-name { font-size: 15px; font-weight: 600; color: #1e293b; }
+.muted { color: #94a3b8; }
+
+/* 本页状态小结 */
+.stat-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.stat-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; background: #ffffff; border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, .06);
+  border: 1px solid rgba(226, 232, 240, .7);
+}
+.stat-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--chip-color, #94a3b8);
+}
+.stat-label { font-size: 14px; color: #475569; }
+.stat-num { font-size: 16px; font-weight: 700; color: #1e293b; }
+.stat-total { background: #f8fafc; }
+
+/* 空状态 */
+.empty-state { padding: 28px 0; }
+.empty-emoji { font-size: 46px; }
+.empty-title { margin-top: 10px; font-size: 16px; font-weight: 600; color: #475569; }
+.empty-tip { margin-top: 6px; font-size: 13px; color: #94a3b8; }
 </style>

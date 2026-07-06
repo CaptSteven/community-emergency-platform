@@ -1,48 +1,80 @@
 <template>
-  <div class="page">
+  <div class="page-container">
     <div class="page-header">
-      <h2 style="margin: 0">服务计划管理</h2>
       <div>
+        <div class="page-title">服务计划管理</div>
+        <div class="page-subtitle">为居民（如独居老人）建立周期性上门服务计划；点击「生成本周排班」后，系统按技能匹配并轮流把到期计划派给志愿者。</div>
+      </div>
+      <div class="header-actions">
         <el-button type="success" :loading="generating" @click="generateVisits">生成本周排班</el-button>
         <el-button type="primary" @click="openCreate">新建服务计划</el-button>
       </div>
     </div>
 
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      title="为居民（如独居老人）建立周期性上门服务计划；点击“生成本周排班”后，系统按技能匹配并轮流把到期计划派给志愿者。"
-      style="margin-bottom: 16px"
-    />
-
-    <el-card shadow="never">
+    <div class="card">
       <el-table :data="items" v-loading="loading" stripe>
         <el-table-column prop="resident_name" label="受益居民" min-width="110" />
-        <el-table-column label="服务" min-width="150">
+        <el-table-column label="服务" min-width="180">
           <template #default="{ row }">
-            <span style="margin-right:6px">{{ row.service_type_icon }}</span>{{ row.service_type_name }}
+            <div class="svc-cell">
+              <span class="svc-icon">{{ row.service_type_icon || '🛎️' }}</span>
+              <span class="svc-name">{{ row.service_type_name }}</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="frequency_display" label="周期" width="90" />
         <el-table-column prop="preferred_weekday_display" label="首选日" width="90" />
         <el-table-column prop="preferred_time" label="时段" width="90" />
         <el-table-column prop="address" label="服务地址" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="last_generated_date" label="最近排班" width="120" />
-        <el-table-column label="状态" width="80">
+        <el-table-column prop="last_generated_date" label="最近排班" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? '生效' : '暂停' }}</el-tag>
+            <span v-if="row.last_generated_date">{{ row.last_generated_date }}</span>
+            <span v-else class="muted">未排班</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="210" fixed="right">
+        <el-table-column label="状态" width="110" align="center">
           <template #default="{ row }">
-            <el-button size="small" @click="generateNow(row)">立即排班</el-button>
+            <!-- 生效/暂停 快捷切换（PATCH is_active） -->
+            <el-switch
+              v-model="row.is_active"
+              :loading="row._toggling"
+              active-text="生效"
+              inactive-text="暂停"
+              inline-prompt
+              style="--el-switch-on-color: #16a34a; --el-switch-off-color: #94a3b8"
+              @change="val => toggleActive(row, val)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" plain @click="generateNow(row)">立即排班</el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+            <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <div class="empty-state">
+            <div class="empty-emoji">📅</div>
+            <div class="empty-title">还没有服务计划</div>
+            <div class="empty-tip">点击「新建服务计划」，为需要长期照护的居民安排周期性上门服务</div>
+          </div>
+        </template>
       </el-table>
-    </el-card>
+
+      <el-pagination
+        v-if="pagination.total > 0"
+        class="pagination"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="pagination.total"
+        :current-page="pagination.page"
+        :page-size="pagination.pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        @size-change="handleSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '编辑服务计划' : '新建服务计划'" width="500px">
       <el-form :model="form" label-width="90px">
@@ -91,6 +123,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
+import { buildPageParams, unwrapPaginated } from '../utils/pagination'
 
 const FREQ = [
   { value: 'weekly', label: '每周' },
@@ -109,6 +142,9 @@ const dialogVisible = ref(false)
 const editing = ref(false)
 const editId = ref(null)
 
+// 分页（兼容后端返回数组或 {count,results}）
+const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
+
 const blank = () => ({
   resident: null, service_type: null, frequency: 'weekly',
   preferred_weekday: 0, preferred_time: '', address: '', note: '', is_active: true
@@ -118,10 +154,15 @@ const form = reactive(blank())
 const loadData = async () => {
   loading.value = true
   try {
-    const data = await request.get('/service-subscriptions/', { params: { page_size: 200 } })
-    items.value = Array.isArray(data) ? data : (data.results || [])
+    const data = await request.get('/service-subscriptions/', { params: { ...buildPageParams(pagination) } })
+    const page = unwrapPaginated(data)
+    items.value = page.list
+    pagination.total = page.total
   } catch (e) { /* 拦截器提示 */ } finally { loading.value = false }
 }
+
+const handleSizeChange = size => { pagination.pageSize = size; pagination.page = 1; loadData() }
+const handlePageChange = page => { pagination.page = page; loadData() }
 
 const loadRefs = async () => {
   try {
@@ -129,14 +170,27 @@ const loadRefs = async () => {
       request.get('/users/', { params: { role: 'resident', page_size: 200 } }),
       request.get('/service-types/', { params: { is_active: true, page_size: 200 } })
     ])
-    residents.value = Array.isArray(r) ? r : (r.results || [])
-    types.value = Array.isArray(t) ? t : (t.results || [])
+    residents.value = unwrapPaginated(r).list
+    types.value = unwrapPaginated(t).list
   } catch (e) { /* 拦截器提示 */ }
 }
 
 const onTypeChange = id => {
   const t = types.value.find(x => x.id === id)
   if (t && !editing.value) form.frequency = t.default_frequency
+}
+
+// 生效/暂停 快捷切换（PATCH is_active）
+const toggleActive = async (row, val) => {
+  row._toggling = true
+  try {
+    await request.patch(`/service-subscriptions/${row.id}/`, { is_active: val })
+    ElMessage.success(val ? '计划已生效' : '计划已暂停')
+  } catch (e) {
+    row.is_active = !val   // 失败回滚
+  } finally {
+    row._toggling = false
+  }
 }
 
 const openCreate = () => {
@@ -203,5 +257,22 @@ onMounted(() => { loadData(); loadRefs() })
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.header-actions { display: flex; gap: 10px; }
+
+/* 服务单元格：大 emoji + 名称 */
+.svc-cell { display: flex; align-items: center; gap: 10px; }
+.svc-icon {
+  font-size: 22px; line-height: 1;
+  width: 38px; height: 38px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #f0fdf4; border-radius: 10px;
+}
+.svc-name { font-size: 15px; font-weight: 600; color: #1e293b; }
+.muted { color: #94a3b8; }
+
+/* 空状态 */
+.empty-state { padding: 28px 0; }
+.empty-emoji { font-size: 46px; }
+.empty-title { margin-top: 10px; font-size: 16px; font-weight: 600; color: #475569; }
+.empty-tip { margin-top: 6px; font-size: 13px; color: #94a3b8; }
 </style>

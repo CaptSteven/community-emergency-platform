@@ -1,48 +1,82 @@
 <template>
-  <div class="page">
+  <div class="page-container">
     <div class="page-header">
-      <h2 style="margin: 0">服务目录管理</h2>
-      <el-button type="primary" @click="openCreate">新建服务类型</el-button>
+      <div>
+        <div class="page-title">服务目录管理</div>
+        <div class="page-subtitle">定义社区长期服务（如老人健康检查、助浴、代购），所需技能用于自动排班时匹配志愿者。</div>
+      </div>
+      <div class="header-actions">
+        <el-button :loading="loading" @click="loadData">刷新</el-button>
+        <el-button type="primary" @click="openCreate">新建服务类型</el-button>
+      </div>
     </div>
 
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      title="服务目录定义社区长期服务（如老人健康检查、助浴、代购）。所需技能用于自动排班时匹配志愿者。"
-      style="margin-bottom: 16px"
-    />
-
-    <el-card shadow="never">
+    <div class="card">
       <el-table :data="items" v-loading="loading" stripe>
-        <el-table-column label="服务" min-width="160">
+        <el-table-column label="服务" min-width="200">
           <template #default="{ row }">
-            <span style="font-size:16px;margin-right:6px">{{ row.icon }}</span>{{ row.name }}
+            <div class="svc-cell">
+              <span class="svc-icon">{{ row.icon || '🛎️' }}</span>
+              <div class="svc-meta">
+                <div class="svc-name">{{ row.name }}</div>
+                <div class="svc-desc" v-if="row.description">{{ row.description }}</div>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="code" label="标识" width="130" />
-        <el-table-column prop="category" label="分类" width="110" />
-        <el-table-column prop="required_skill" label="所需技能" width="110" />
+        <el-table-column prop="code" label="标识" width="140" />
+        <el-table-column label="分类" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.category" type="info" effect="plain" round>{{ row.category }}</el-tag>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="required_skill" label="所需技能" width="120">
+          <template #default="{ row }">
+            <span v-if="row.required_skill">{{ row.required_skill }}</span>
+            <span v-else class="muted">不限</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="default_frequency_display" label="默认周期" width="100" />
-        <el-table-column label="健康记录" width="90">
+        <el-table-column label="健康记录" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.needs_health_record" type="success" size="small">需录入</el-tag>
-            <span v-else>-</span>
+            <el-tag v-if="row.needs_health_record" type="warning" effect="dark" size="small">需录入</el-tag>
+            <span v-else class="muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80">
+        <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? '启用' : '停用' }}</el-tag>
+            <el-tag :type="row.is_active ? 'success' : 'info'" effect="dark" size="small">{{ row.is_active ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+            <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <div class="empty-state">
+            <div class="empty-emoji">🗂️</div>
+            <div class="empty-title">还没有服务类型</div>
+            <div class="empty-tip">点击右上角「新建服务类型」，添加社区长期服务项目吧</div>
+          </div>
+        </template>
       </el-table>
-    </el-card>
+
+      <el-pagination
+        v-if="pagination.total > 0"
+        class="pagination"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="pagination.total"
+        :current-page="pagination.page"
+        :page-size="pagination.pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        @size-change="handleSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '编辑服务类型' : '新建服务类型'" width="520px">
       <el-form :model="form" label-width="90px">
@@ -91,6 +125,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../api/request'
+import { buildPageParams, unwrapPaginated } from '../utils/pagination'
 
 const FREQ = [
   { value: 'weekly', label: '每周' },
@@ -105,6 +140,9 @@ const dialogVisible = ref(false)
 const editing = ref(false)
 const editId = ref(null)
 
+// 分页（兼容后端返回数组或 {count,results}）
+const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
+
 const blank = () => ({
   name: '', code: '', category: '', icon: '🛎️', required_skill: '',
   default_frequency: 'weekly', duration_minutes: 30, description: '',
@@ -115,10 +153,15 @@ const form = reactive(blank())
 const loadData = async () => {
   loading.value = true
   try {
-    const data = await request.get('/service-types/', { params: { page_size: 200 } })
-    items.value = Array.isArray(data) ? data : (data.results || [])
+    const data = await request.get('/service-types/', { params: { ...buildPageParams(pagination) } })
+    const page = unwrapPaginated(data)
+    items.value = page.list
+    pagination.total = page.total
   } catch (e) { /* 拦截器提示 */ } finally { loading.value = false }
 }
+
+const handleSizeChange = size => { pagination.pageSize = size; pagination.page = 1; loadData() }
+const handlePageChange = page => { pagination.page = page; loadData() }
 
 const openCreate = () => {
   editing.value = false; editId.value = null
@@ -168,5 +211,27 @@ onMounted(loadData)
 </script>
 
 <style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.header-actions { display: flex; gap: 10px; }
+
+/* 服务名称单元格：大 emoji + 名称/说明 */
+.svc-cell { display: flex; align-items: center; gap: 12px; }
+.svc-icon {
+  font-size: 26px; line-height: 1;
+  width: 44px; height: 44px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #eff6ff; border-radius: 12px;
+}
+.svc-meta { min-width: 0; }
+.svc-name { font-size: 15px; font-weight: 600; color: #1e293b; }
+.svc-desc {
+  margin-top: 2px; font-size: 12px; color: #94a3b8;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;
+}
+.muted { color: #94a3b8; }
+
+/* 空状态 */
+.empty-state { padding: 28px 0; }
+.empty-emoji { font-size: 46px; }
+.empty-title { margin-top: 10px; font-size: 16px; font-weight: 600; color: #475569; }
+.empty-tip { margin-top: 6px; font-size: 13px; color: #94a3b8; }
 </style>

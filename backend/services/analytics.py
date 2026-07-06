@@ -56,6 +56,43 @@ class ServiceTypeStatsAPIView(APIView):
         return Response(list(rows))
 
 
+class UpcomingVisitsAPIView(APIView):
+    """未来 7 天（含今天）即将上门、尚未完成的服务工单（只读，按日期升序）。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = timezone.now().date()
+        end = today + timedelta(days=7)
+        qs = (
+            ServiceVisit.objects.filter(
+                scheduled_date__gte=today, scheduled_date__lte=end,
+                status__in=['assigned', 'processing'],
+            )
+            .select_related('resident', 'volunteer', 'service_type')
+            .order_by('scheduled_date', 'created_at')
+        )
+        visits = [
+            {
+                'id': v.id,
+                'scheduled_date': v.scheduled_date,
+                'service_type': v.service_type.name,
+                'icon': v.service_type.icon,
+                'resident': v.resident.username,
+                'volunteer': v.volunteer.username if v.volunteer else None,
+                'status': v.status,
+                'status_display': v.get_status_display(),
+                'address': v.address,
+            }
+            for v in qs
+        ]
+        return Response({
+            'range_start': today,
+            'range_end': end,
+            'count': len(visits),
+            'visits': visits,
+        })
+
+
 class VolunteerServiceLoadAPIView(APIView):
     """志愿者上门服务负载排行（完成 / 总量）。"""
     permission_classes = [IsAuthenticated]
