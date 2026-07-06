@@ -6,7 +6,7 @@
         <div class="page-subtitle">为居民（如独居老人）建立周期性上门服务计划；点击「生成本周排班」后，系统按技能匹配并轮流把到期计划派给志愿者。</div>
       </div>
       <div class="header-actions">
-        <el-button type="success" :loading="generating" @click="generateVisits">生成本周排班</el-button>
+        <el-button type="success" plain :loading="generating" @click="generateVisits">生成本周排班</el-button>
         <el-button type="primary" @click="openCreate">新建服务计划</el-button>
       </div>
     </div>
@@ -50,7 +50,7 @@
           <template #default="{ row }">
             <el-button size="small" type="primary" plain @click="generateNow(row)">立即排班</el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
+            <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
         <template #empty>

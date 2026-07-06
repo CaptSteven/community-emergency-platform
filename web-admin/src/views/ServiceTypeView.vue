@@ -52,7 +52,7 @@
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
+            <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
         <template #empty>
