@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from django.db import transaction
 from django.db.models import Q
@@ -157,6 +157,18 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
             'visit': ServiceVisitSerializer(visit).data,
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='build-group')
+    def build_group(self, request, pk=None):
+        """智能筛选循环组：按技能匹配 + 距离由近到远排出一组合格志愿者，轮流服务。"""
+        if not is_admin(request.user):
+            return Response({'message': '只有管理员可以编排循环组'}, status=status.HTTP_403_FORBIDDEN)
+        sub = self.get_object()
+        ids = scheduler.build_rotation_group(sub)
+        return Response({
+            'message': f'已编排循环组，共 {len(ids)} 名合格志愿者，将轮流上门服务。',
+            'subscription': ServiceSubscriptionSerializer(sub).data,
+        }, status=status.HTTP_200_OK)
+
 
 class ServiceVisitViewSet(viewsets.ModelViewSet):
     """上门服务工单：管理员全量；志愿者见自己的；居民见自己的。"""
@@ -187,13 +199,69 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if self.request.query_params.get('upcoming') in ('1', 'true'):
             today = timezone.now().date()
             qs = qs.filter(scheduled_date__gte=today, status__in=['assigned', 'processing'])
+        # ?kind=single 单次任务(无订阅) / recurring 周期计划产生
+        kind = self.request.query_params.get('kind')
+        if kind == 'single':
+            qs = qs.filter(subscription__isnull=True)
+        elif kind == 'recurring':
+            qs = qs.filter(subscription__isnull=False)
         return qs
 
-    # 工单只能由系统排班生成、经状态机 action 流转；关闭默认的直接增删改，
+    # 工单只能由系统排班/居民单次申请生成，经状态机 action 流转；关闭默认的直接增删改，
     # 防止志愿者用 DELETE 绕过取消管控、居民用 PATCH 伪造健康记录。
     def create(self, request, *args, **kwargs):
-        return Response({'message': '上门工单由系统排班生成，不支持直接创建'},
+        return Response({'message': '上门工单由系统排班或「单次任务申请」生成，不支持直接创建'},
                         status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    @action(detail=False, methods=['post'], url_path='request-once')
+    def request_once(self, request):
+        """居民提交单次(一次性)服务任务：生成一张无订阅、待派单(volunteer 空)的工单，
+        等管理员在地图上拖拽分配。"""
+        profile = _profile(request.user)
+        if not is_admin(request.user) and not (profile and profile.role == 'resident'):
+            return Response({'message': '只有居民本人或管理员可以提交单次任务'}, status=status.HTTP_403_FORBIDDEN)
+        body = _body(request)
+        try:
+            service_type = ServiceType.objects.get(pk=int(body.get('service_type')), is_active=True)
+        except (ServiceType.DoesNotExist, ValueError, TypeError):
+            return Response({'message': '请选择有效的服务类型'}, status=status.HTTP_400_BAD_REQUEST)
+        # 居民只能给自己提；管理员可指定 resident
+        resident = request.user
+        if is_admin(request.user) and body.get('resident'):
+            resident = User.objects.filter(pk=body.get('resident')).first() or request.user
+        rp = _profile(resident)
+        address = (body.get('address') or '').strip() or (getattr(rp, 'address', '') or '')
+        scheduled_date = body.get('scheduled_date') or date.today()
+        visit = ServiceVisit.objects.create(
+            subscription=None, service_type=service_type, resident=resident,
+            volunteer=None, scheduled_date=scheduled_date, status='assigned',
+            address=address, note=(body.get('note') or ''),
+            latitude=getattr(rp, 'current_latitude', None), longitude=getattr(rp, 'current_longitude', None),
+        )
+        for admin in _admins():
+            create_notification(
+                recipient=admin, title='新的单次服务任务',
+                content=f'{resident.username} 提交了「{service_type.name}」单次任务，请在地图上分配志愿者。',
+                category='service', related_type='service_visit', related_id=visit.id,
+            )
+        return Response({'message': '单次任务已提交，等待管理员分配', 'visit': ServiceVisitSerializer(visit).data},
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='my-stats')
+    def my_stats(self, request):
+        """志愿者查看自己的服务时长(总/本周)、积分与完成单数。"""
+        profile = _profile(request.user)
+        completed = ServiceVisit.objects.filter(volunteer=request.user, status='completed')
+        total_min = sum(v.duration_minutes or 0 for v in completed)
+        today = timezone.now().date()
+        week_start = today - timedelta(days=today.weekday())
+        week_min = sum(v.duration_minutes or 0 for v in completed.filter(completed_at__date__gte=week_start))
+        return Response({
+            'points': (profile.points if profile else 0) or 0,
+            'total_minutes': total_min,
+            'week_minutes': week_min,
+            'completed_count': completed.count(),
+        })
 
     def update(self, request, *args, **kwargs):
         if not is_admin(request.user):
@@ -264,7 +332,19 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
 
         visit.status = 'completed'
         visit.completed_at = timezone.now()
+        # 服务时长：有开始时间按实际时长，否则取服务类型预计时长
+        if visit.started_at:
+            mins = int((visit.completed_at - visit.started_at).total_seconds() // 60)
+            visit.duration_minutes = max(1, mins)
+        else:
+            visit.duration_minutes = visit.service_type.duration_minutes or 30
         visit.save()
+
+        # 志愿积分：每次服务基础 10 分 + 每满 30 分钟加 5 分
+        earned = 10 + (visit.duration_minutes // 30) * 5
+        vp = profile  # 已在上方取到 volunteer 的 profile
+        vp.points = (vp.points or 0) + earned
+        vp.save(update_fields=['points'])
 
         create_notification(
             recipient=visit.resident,
@@ -272,7 +352,11 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             content=f'志愿者 {request.user.username} 已完成「{visit.service_type.name}」服务。',
             category='service', related_type='service_visit', related_id=visit.id,
         )
-        return Response({'message': '服务已完成', 'visit': ServiceVisitSerializer(visit).data})
+        return Response({
+            'message': f'服务已完成，本次获得 {earned} 积分',
+            'earned_points': earned,
+            'visit': ServiceVisitSerializer(visit).data,
+        })
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):

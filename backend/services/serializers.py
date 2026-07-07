@@ -27,6 +27,7 @@ class ServiceSubscriptionSerializer(serializers.ModelSerializer):
         source='get_preferred_weekday_display', read_only=True
     )
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    rotation_group = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceSubscription
@@ -35,11 +36,26 @@ class ServiceSubscriptionSerializer(serializers.ModelSerializer):
             'service_type_icon', 'frequency', 'frequency_display', 'preferred_weekday',
             'preferred_weekday_display', 'preferred_time', 'address', 'latitude', 'longitude',
             'note', 'is_active', 'start_date', 'last_generated_date',
+            'rotation_index', 'rotation_group',
             'created_by', 'created_by_name', 'created_at',
         ]
-        read_only_fields = ['last_generated_date', 'created_by', 'created_at']
+        read_only_fields = ['last_generated_date', 'rotation_index', 'created_by', 'created_at']
         # resident 由视图层注入：居民自动取本人，管理员需显式指定（在 perform_create 校验）
         extra_kwargs = {'resident': {'required': False}}
+
+    def get_rotation_group(self, obj):
+        """返回循环组成员及当前进行到谁，供 web/App 展示轮换进度。"""
+        ids = list(obj.rotation_volunteers or [])
+        if not ids:
+            return []
+        from django.contrib.auth.models import User
+        name_map = {u.id: u.username for u in User.objects.filter(id__in=ids)}
+        cur = obj.rotation_index % len(ids)
+        return [
+            {'id': vid, 'username': name_map.get(vid, f'#{vid}'),
+             'order': i + 1, 'is_next': i == cur}
+            for i, vid in enumerate(ids)
+        ]
 
 
 class ServiceVisitSerializer(serializers.ModelSerializer):
@@ -58,7 +74,7 @@ class ServiceVisitSerializer(serializers.ModelSerializer):
             'id', 'subscription', 'service_type', 'service_type_name', 'service_type_icon',
             'needs_health_record', 'resident', 'resident_name', 'volunteer', 'volunteer_name',
             'scheduled_date', 'status', 'status_display', 'address', 'latitude', 'longitude',
-            'feedback', 'completion_photo',
+            'note', 'duration_minutes', 'feedback', 'completion_photo',
             'systolic', 'diastolic', 'heart_rate', 'temperature', 'health_note',
             'started_at', 'completed_at', 'created_at',
         ]

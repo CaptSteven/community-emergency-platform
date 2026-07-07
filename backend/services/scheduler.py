@@ -8,6 +8,7 @@
 - 无人可派：仍生成工单但 volunteer 为空，并通知管理员人工处理。
 """
 from datetime import date, timedelta
+from math import radians, sin, cos, asin, sqrt
 
 from django.contrib.auth.models import User
 
@@ -15,6 +16,53 @@ from .models import ServiceSubscription, ServiceVisit
 
 
 FREQ_DAYS = {'weekly': 7, 'biweekly': 14, 'monthly': 30}
+
+
+def haversine_km(lat1, lng1, lat2, lng2):
+    """两点球面距离(公里)；任一坐标缺失返回一个大数(排到最后)。"""
+    if None in (lat1, lng1, lat2, lng2):
+        return 1e9
+    lat1, lng1, lat2, lng2 = map(lambda v: radians(float(v)), (lat1, lng1, lat2, lng2))
+    dlat = lat2 - lat1
+    dlng = lng2 - lng1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlng / 2) ** 2
+    return 6371.0 * 2 * asin(sqrt(a))
+
+
+def build_rotation_group(subscription, save=True):
+    """智能筛选循环组：技能+社区合格的志愿者，按到居民的距离由近到远排序，
+    组成有序轮换名单存入 subscription.rotation_volunteers，重置 rotation_index=0。返回 id 列表。"""
+    res = subscription.resident
+    rp = getattr(res, 'profile', None)
+    r_lat = getattr(rp, 'current_latitude', None) if rp else None
+    r_lng = getattr(rp, 'current_longitude', None) if rp else None
+    community = community_of(res)
+    pool = list(eligible_volunteers(subscription.service_type, community).select_related('profile'))
+
+    def dist(v):
+        vp = getattr(v, 'profile', None)
+        return haversine_km(r_lat, r_lng, getattr(vp, 'current_latitude', None) if vp else None,
+                            getattr(vp, 'current_longitude', None) if vp else None)
+
+    pool.sort(key=lambda v: (dist(v), _load(v, subscription.service_type), v.id))
+    ids = [v.id for v in pool]
+    if save:
+        subscription.rotation_volunteers = ids
+        subscription.rotation_index = 0
+        subscription.save(update_fields=['rotation_volunteers', 'rotation_index'])
+    return ids
+
+
+def next_rotation_volunteer(subscription):
+    """按循环组取下一位志愿者并推进指针；组为空返回 None。"""
+    group = list(subscription.rotation_volunteers or [])
+    if not group:
+        return None
+    idx = subscription.rotation_index % len(group)
+    vol = User.objects.filter(id=group[idx], is_active=True).first()
+    subscription.rotation_index = (idx + 1) % len(group)
+    subscription.save(update_fields=['rotation_index'])
+    return vol
 
 
 def eligible_volunteers(service_type, community=''):
@@ -67,9 +115,15 @@ def has_open_visit(subscription):
 
 
 def create_visit_for(subscription, today, notify=True):
-    """为一个到期计划生成一张工单并自动派单；返回 ServiceVisit。"""
+    """为一个到期计划生成一张工单并自动派单；返回 ServiceVisit。
+    优先按循环组轮换(若已建组)；否则回退到负载最小的合格志愿者。"""
     community = community_of(subscription.resident)
-    volunteer = pick_volunteer(subscription.service_type, community)
+    if subscription.rotation_volunteers:
+        volunteer = next_rotation_volunteer(subscription)
+        if volunteer is None:  # 组内志愿者都不可用则回退
+            volunteer = pick_volunteer(subscription.service_type, community)
+    else:
+        volunteer = pick_volunteer(subscription.service_type, community)
     visit = ServiceVisit.objects.create(
         subscription=subscription,
         service_type=subscription.service_type,

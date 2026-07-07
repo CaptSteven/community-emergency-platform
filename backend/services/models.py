@@ -78,6 +78,9 @@ class ServiceSubscription(models.Model):
     is_active = models.BooleanField(default=True, verbose_name='是否生效')
     start_date = models.DateField(null=True, blank=True, verbose_name='起始日期')
     last_generated_date = models.DateField(null=True, blank=True, verbose_name='最近排班日期')
+    # 循环组：智能筛选出的合格志愿者(按距离+技能)有序 id 列表；rotation_index 指向下一位轮到的人
+    rotation_volunteers = models.JSONField(default=list, blank=True, verbose_name='轮换循环组(志愿者ID有序表)')
+    rotation_index = models.IntegerField(default=0, verbose_name='当前轮换位置')
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='created_subscriptions', verbose_name='创建人'
@@ -129,6 +132,8 @@ class ServiceVisit(models.Model):
     longitude = models.DecimalField(
         max_digits=10, decimal_places=7, blank=True, null=True, verbose_name='经度'
     )
+    note = models.TextField(blank=True, default='', verbose_name='需求说明')
+    duration_minutes = models.IntegerField(null=True, blank=True, verbose_name='服务时长(分钟)')
     feedback = models.TextField(blank=True, default='', verbose_name='服务反馈')
     completion_photo = models.FileField(
         upload_to='service_visits/', null=True, blank=True, verbose_name='完成凭证照片'

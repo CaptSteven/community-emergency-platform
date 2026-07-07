@@ -32,6 +32,7 @@ from services.analytics import (
     ServiceOverviewAPIView,
     ServiceTypeStatsAPIView,
     VolunteerServiceLoadAPIView,
+    VolunteerLeaderboardAPIView,
     UpcomingVisitsAPIView,
 )
 
@@ -86,6 +87,7 @@ urlpatterns = [
     path('api/analytics/service-type-stats/', ServiceTypeStatsAPIView.as_view()),
     path('api/analytics/volunteer-service-load/', VolunteerServiceLoadAPIView.as_view()),
     path('api/analytics/service-upcoming/', UpcomingVisitsAPIView.as_view()),
+    path('api/analytics/volunteer-leaderboard/', VolunteerLeaderboardAPIView.as_view()),
     path('api/auth/register/', RegisterAPIView.as_view()),
     path('api/auth/login/', LoginAPIView.as_view()),
     path('api/auth/me/', MeAPIView.as_view()),

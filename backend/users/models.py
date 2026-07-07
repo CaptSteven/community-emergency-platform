@@ -77,6 +77,11 @@ class UserProfile(models.Model):
         verbose_name='是否空闲'
     )
 
+    points = models.IntegerField(
+        default=0,
+        verbose_name='志愿积分'
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='创建时间'

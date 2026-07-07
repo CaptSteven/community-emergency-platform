@@ -93,6 +93,33 @@ class UpcomingVisitsAPIView(APIView):
         })
 
 
+class VolunteerLeaderboardAPIView(APIView):
+    """志愿积分排行榜：按积分排序，含总/本周服务时长与完成单数。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.contrib.auth.models import User
+        today = timezone.now().date()
+        week_start = today - timedelta(days=today.weekday())
+        rows = []
+        vols = User.objects.filter(is_active=True, profile__role='volunteer').select_related('profile')
+        for u in vols:
+            completed = ServiceVisit.objects.filter(volunteer=u, status='completed')
+            total_min = sum(v.duration_minutes or 0 for v in completed)
+            week_min = sum(v.duration_minutes or 0 for v in completed.filter(completed_at__date__gte=week_start))
+            rows.append({
+                'volunteer': u.username,
+                'points': (u.profile.points if hasattr(u, 'profile') else 0) or 0,
+                'total_minutes': total_min,
+                'week_minutes': week_min,
+                'completed_count': completed.count(),
+            })
+        rows.sort(key=lambda r: (-r['points'], -r['total_minutes']))
+        for i, r in enumerate(rows):
+            r['rank'] = i + 1
+        return Response(rows[:50])
+
+
 class VolunteerServiceLoadAPIView(APIView):
     """志愿者上门服务负载排行（完成 / 总量）。"""
     permission_classes = [IsAuthenticated]

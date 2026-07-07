@@ -116,6 +116,7 @@ class UserListSerializer(serializers.ModelSerializer):
     current_longitude = serializers.DecimalField(source='profile.current_longitude', max_digits=10, decimal_places=7, read_only=True)
     location_updated_at = serializers.DateTimeField(source='profile.location_updated_at', read_only=True)
     is_available = serializers.BooleanField(source='profile.is_available', read_only=True)
+    points = serializers.IntegerField(source='profile.points', read_only=True)
     monthly_cancel_count = serializers.SerializerMethodField()
 
     def get_monthly_cancel_count(self, obj):
@@ -141,6 +142,7 @@ class UserListSerializer(serializers.ModelSerializer):
             'current_longitude',
             'location_updated_at',
             'is_available',
+            'points',
             'monthly_cancel_count',
         ]
 

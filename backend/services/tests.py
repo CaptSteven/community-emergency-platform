@@ -534,3 +534,91 @@ class CancellationHelperTests(APITestCase):
         self.assertEqual((count, warned, revoked), (8, False, True))
         self.vol.refresh_from_db()
         self.assertFalse(self.vol.is_active)  # 撤销即停用账号
+
+
+class SingleTaskAndPointsTests(APITestCase):
+    """单次任务、志愿积分/时长、循环组轮换。"""
+
+    def setUp(self):
+        self.admin = make_user('sp_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('sp_res', 'resident', community=COMMUNITY, address='水磨沟区1号',
+                                  current_latitude=43.83, current_longitude=87.64)
+        self.stype = ServiceType.objects.create(
+            name='健康检查', code='health', required_skill='医疗', needs_health_record=True, duration_minutes=30)
+        self.vol1 = make_user('sp_v1', 'volunteer', community=COMMUNITY, skills='医疗',
+                             current_latitude=43.831, current_longitude=87.641)   # 近
+        self.vol2 = make_user('sp_v2', 'volunteer', community=COMMUNITY, skills='医疗',
+                             current_latitude=43.90, current_longitude=87.70)     # 远
+
+    # #1 单次任务
+    def test_resident_request_single_task(self):
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-visits/request-once/', {
+            'service_type': self.stype.id, 'address': '水磨沟区临时地址', 'note': '帮忙量血压',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
+        v = ServiceVisit.objects.get(id=resp.data['visit']['id'])
+        self.assertIsNone(v.subscription)          # 单次(无订阅)
+        self.assertIsNone(v.volunteer)             # 待管理员派单
+        self.assertEqual(v.resident, self.resident)
+        self.assertEqual(v.address, '水磨沟区临时地址')
+        # 管理员应收到通知
+        self.assertTrue(self.admin.notifications.filter(category='service').exists())
+
+    def test_single_task_kind_filter(self):
+        ServiceVisit.objects.create(service_type=self.stype, resident=self.resident,
+                                    scheduled_date=date.today(), status='assigned')  # single
+        sub = ServiceSubscription.objects.create(resident=self.resident, service_type=self.stype, frequency='weekly')
+        ServiceVisit.objects.create(subscription=sub, service_type=self.stype, resident=self.resident,
+                                    volunteer=self.vol1, scheduled_date=date.today(), status='assigned')  # recurring
+        self.client.force_authenticate(self.admin)
+        single = self.client.get('/api/service-visits/?kind=single')
+        rows = single.data if isinstance(single.data, list) else single.data.get('results', [])
+        self.assertTrue(all(r['subscription'] is None for r in rows))
+
+    # #6 积分 + 时长
+    def test_complete_awards_points_and_duration(self):
+        visit = ServiceVisit.objects.create(service_type=self.stype, resident=self.resident,
+                                            volunteer=self.vol1, scheduled_date=date.today(), status='assigned')
+        self.client.force_authenticate(self.vol1)
+        self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id, {'feedback': 'ok'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertGreaterEqual(resp.data['earned_points'], 10)
+        self.vol1.refresh_from_db()
+        self.assertGreaterEqual(self.vol1.profile.points, 10)
+        visit.refresh_from_db()
+        self.assertIsNotNone(visit.duration_minutes)
+
+    def test_my_stats(self):
+        self.client.force_authenticate(self.vol1)
+        resp = self.client.get('/api/service-visits/my-stats/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('points', resp.data)
+        self.assertIn('week_minutes', resp.data)
+
+    def test_leaderboard(self):
+        self.vol1.profile.points = 50; self.vol1.profile.save()
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get('/api/analytics/volunteer-leaderboard/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(any(r['volunteer'] == 'sp_v1' and r['points'] == 50 for r in resp.data))
+
+    # #2 循环组轮换（距离近的排前）
+    def test_build_rotation_group_and_rotate(self):
+        sub = ServiceSubscription.objects.create(resident=self.resident, service_type=self.stype,
+                                                 frequency='weekly', is_active=True)
+        ids = scheduler.build_rotation_group(sub)
+        self.assertEqual(ids[0], self.vol1.id)   # 近的排第一
+        self.assertIn(self.vol2.id, ids)
+        v1 = scheduler.create_visit_for(sub, date.today(), notify=False)
+        self.assertEqual(v1.volunteer, self.vol1)
+        ServiceVisit.objects.filter(id=v1.id).update(status='completed')
+        v2 = scheduler.create_visit_for(sub, date.today(), notify=False)
+        self.assertEqual(v2.volunteer, self.vol2)   # 轮到下一位
+
+    def test_build_group_admin_only(self):
+        sub = ServiceSubscription.objects.create(resident=self.resident, service_type=self.stype, frequency='weekly')
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-subscriptions/%d/build-group/' % sub.id, {}, format='json')
+        self.assertEqual(resp.status_code, 403)
