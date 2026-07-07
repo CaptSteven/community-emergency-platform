@@ -667,3 +667,41 @@ class ServiceModeAndDailyTests(APITestCase):
         ServiceVisit.objects.filter(subscription=sub).update(status='completed')
         again = scheduler.generate_due_visits(today=date.today())
         self.assertEqual(len(again), 1)   # 每日：隔天即到期
+
+
+class ManualRotationGroupTests(APITestCase):
+    """管理员手动编排循环组：set-group 覆盖顺序，派单按该顺序。"""
+
+    def setUp(self):
+        self.admin = make_user('mg_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('mg_res', 'resident', community=COMMUNITY)
+        self.stype = ServiceType.objects.create(name='健康检查', code='mg_health', required_skill='医疗')
+        self.v1 = make_user('mg_v1', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.v2 = make_user('mg_v2', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.stype, frequency='weekly', is_active=True)
+
+    def test_admin_set_group_orders_and_dispatches(self):
+        self.client.force_authenticate(self.admin)
+        # 手动指定顺序：v2 在前
+        resp = self.client.post('/api/service-subscriptions/%d/set-group/' % self.sub.id,
+                                {'volunteer_ids': [self.v2.id, self.v1.id]}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.rotation_volunteers, [self.v2.id, self.v1.id])
+        v = scheduler.create_visit_for(self.sub, date.today(), notify=False)
+        self.assertEqual(v.volunteer, self.v2)      # 按手动顺序，第一位是 v2
+
+    def test_set_group_filters_non_volunteers_and_bad_ids(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-subscriptions/%d/set-group/' % self.sub.id,
+                                {'volunteer_ids': [self.v1.id, 99999, self.resident.id]}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.rotation_volunteers, [self.v1.id])   # 过滤掉不存在/非志愿者
+
+    def test_set_group_non_admin_forbidden(self):
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-subscriptions/%d/set-group/' % self.sub.id,
+                                {'volunteer_ids': [self.v1.id]}, format='json')
+        self.assertEqual(resp.status_code, 403)

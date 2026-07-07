@@ -5,13 +5,14 @@ from django.db.models import Q
 from django.utils import timezone
 
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from emergency_backend.permissions import IsAdminRole
 
-from .models import UserProfile
+from .models import UserProfile, VolunteerApplication
 from requests_app.models import HelpRequest
 from notifications.utils import create_notification
 from .serializers import (
@@ -20,6 +21,7 @@ from .serializers import (
     UserInfoSerializer,
     UserListSerializer,
     UserLocationUpdateSerializer,
+    VolunteerApplicationSerializer,
 )
 def build_user_response(user, token=None):
     profile = getattr(user, 'profile', None)
@@ -222,6 +224,20 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({'message': '不能删除当前登录账号'}, status=status.HTTP_400_BAD_REQUEST)
         return super().destroy(request, *args, **kwargs)
 
+    @action(detail=True, methods=['post'])
+    def verify(self, request, pk=None):
+        """管理员手动切换志愿者「已认证」状态。"""
+        user = self.get_object()
+        profile = getattr(user, 'profile', None)
+        if profile is None:
+            return Response({'message': '该用户没有资料'}, status=status.HTTP_400_BAD_REQUEST)
+        profile.is_verified = not profile.is_verified
+        profile.save(update_fields=['is_verified'])
+        return Response({
+            'message': '已认证该志愿者' if profile.is_verified else '已取消认证',
+            'is_verified': profile.is_verified,
+        })
+
     def get_queryset(self):
         user = self.request.user
         profile = getattr(user, 'profile', None)
@@ -274,3 +290,119 @@ class UpdateMyLocationAPIView(APIView):
             'current_longitude': profile.current_longitude,
             'location_updated_at': profile.location_updated_at,
         })
+
+
+class VolunteerApplicationViewSet(viewsets.ModelViewSet):
+    """志愿者线上申请：提交(建 inactive 账号)/上传图片对外开放；查看与审核仅管理员。"""
+    queryset = VolunteerApplication.objects.select_related('user', 'reviewed_by')
+    serializer_class = VolunteerApplicationSerializer
+
+    IMAGE_SLOTS = ['id_card_front', 'id_card_back', 'skill_cert', 'health_cert', 'profile_photo']
+
+    def get_permissions(self):
+        if self.action in ['create', 'upload_image']:
+            return [AllowAny()]
+        return [IsAdminRole()]
+
+    def _admins(self):
+        return User.objects.filter(Q(profile__role='admin') | Q(is_superuser=True)).distinct()
+
+    def _save_images(self, app, request):
+        changed = []
+        for slot in self.IMAGE_SLOTS:
+            if slot in request.FILES:
+                setattr(app, slot, request.FILES[slot])
+                changed.append(slot)
+        if changed:
+            app.save(update_fields=changed)
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        if not username or len(password) < 6:
+            return Response({'message': '请填写用户名和至少 6 位密码'}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=username).exists():
+            return Response({'message': '该用户名已被占用，请更换'}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            user = User.objects.create_user(username=username, password=password)
+            user.is_active = False   # 审核通过前不可登录
+            user.save(update_fields=['is_active'])
+            UserProfile.objects.create(
+                user=user, role='volunteer', is_verified=False,
+                phone=data.get('phone', '') or '', community=data.get('community', '') or '',
+                address=data.get('address', '') or '', skills=data.get('skills', '') or '',
+            )
+            app = VolunteerApplication.objects.create(
+                user=user, phone=data.get('phone', '') or '', community=data.get('community', '') or '',
+                address=data.get('address', '') or '', skills=data.get('skills', '') or '',
+                note=data.get('note', '') or '',
+            )
+            self._save_images(app, request)   # multipart 一并带图时保存
+        for admin in self._admins():
+            create_notification(
+                recipient=admin, title='新的志愿者申请',
+                content=f'{username} 提交了志愿者资格申请，请到「志愿者审核」查看材料并安排面试。',
+                category='system', related_type='volunteer_application', related_id=app.id,
+            )
+        return Response({'message': '申请已提交，等待管理员审核',
+                         'application_id': app.id, 'user_id': user.id}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='upload-image')
+    def upload_image(self, request, pk=None):
+        """申请人分槽位上传证件图（multipart，fieldName 为槽位名）。"""
+        try:
+            app = VolunteerApplication.objects.get(pk=pk)
+        except VolunteerApplication.DoesNotExist:
+            return Response({'message': '申请不存在'}, status=status.HTTP_404_NOT_FOUND)
+        if app.status in ['approved', 'rejected']:
+            return Response({'message': '该申请已审核完成，不能再修改'}, status=status.HTTP_400_BAD_REQUEST)
+        self._save_images(app, request)
+        return Response({'message': '图片已上传'})
+
+    def _finish_review(self, app, request, new_status):
+        app.status = new_status
+        note = request.data.get('note')
+        if note:
+            app.review_note = note
+        app.reviewed_by = request.user
+        app.reviewed_at = timezone.now()
+        app.save()
+
+    @action(detail=True, methods=['post'])
+    def interview(self, request, pk=None):
+        app = self.get_object()
+        self._finish_review(app, request, 'interviewing')
+        create_notification(recipient=app.user, title='志愿者申请已受理',
+                            content='您的志愿者申请已受理，请留意线下面试通知。',
+                            category='system', related_type='volunteer_application', related_id=app.id)
+        return Response({'message': '已标记为面试中'})
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        app = self.get_object()
+        with transaction.atomic():
+            u = app.user
+            u.is_active = True
+            u.save(update_fields=['is_active'])
+            p = getattr(u, 'profile', None)
+            if p:
+                p.is_verified = True
+                p.save(update_fields=['is_verified'])
+            self._finish_review(app, request, 'approved')
+        create_notification(recipient=app.user, title='志愿者申请已通过',
+                            content='恭喜！您的志愿者资格已通过审核，现在可用申请时的账号密码登录并接单服务。',
+                            category='system', related_type='volunteer_application', related_id=app.id)
+        return Response({'message': '已通过并开通志愿者账号'})
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        app = self.get_object()
+        self._finish_review(app, request, 'rejected')
+        u = app.user
+        u.is_active = False
+        u.save(update_fields=['is_active'])
+        create_notification(recipient=app.user, title='志愿者申请未通过',
+                            content=f"很抱歉，您的申请未通过。{('原因：' + app.review_note) if app.review_note else ''}可完善材料后重新申请。",
+                            category='system', related_type='volunteer_application', related_id=app.id)
+        return Response({'message': '已拒绝该申请'})

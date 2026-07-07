@@ -77,8 +77,9 @@
             <el-button size="small" type="primary" plain @click="generateNow(row)">立即排班</el-button>
             <!-- 编排循环组：按技能 + 距离智能筛选 -->
             <el-button size="small" type="success" plain :loading="row._building" @click="buildGroup(row)">
-              {{ row.rotation_group && row.rotation_group.length ? '重排循环组' : '编排循环组' }}
+              {{ row.rotation_group && row.rotation_group.length ? '一键重排' : '一键编排' }}
             </el-button>
+            <el-button size="small" type="success" plain @click="openManual(row)">手动编排</el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
           </template>
@@ -146,6 +147,30 @@
         <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 手动编排循环组 -->
+    <el-dialog v-model="manualVisible" title="手动编排循环组" width="520px">
+      <div class="manual-tip">按点选顺序轮流上门。建议优先选择「已认证」且技能匹配、就近的志愿者。</div>
+      <el-select
+        v-model="manualIds"
+        multiple
+        filterable
+        placeholder="按顺序选择志愿者"
+        style="width: 100%"
+      >
+        <el-option v-for="v in volunteers" :key="v.id" :label="volLabel(v)" :value="v.id" />
+      </el-select>
+      <div v-if="manualIds.length" class="manual-order">
+        当前顺序：
+        <el-tag v-for="(id, i) in manualIds" :key="id" type="success" effect="plain" class="manual-tag">
+          {{ i + 1 }}. {{ volName(id) }}
+        </el-tag>
+      </div>
+      <template #footer>
+        <el-button @click="manualVisible = false">取消</el-button>
+        <el-button type="primary" :loading="manualSaving" @click="saveManual">保存循环组</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -168,9 +193,16 @@ const generating = ref(false)
 const items = ref([])
 const residents = ref([])
 const types = ref([])
+const volunteers = ref([])
 const dialogVisible = ref(false)
 const editing = ref(false)
 const editId = ref(null)
+
+// 手动编排循环组
+const manualVisible = ref(false)
+const manualSaving = ref(false)
+const manualIds = ref([])
+const manualSubId = ref(null)
 
 // 分页（兼容后端返回数组或 {count,results}）
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
@@ -196,13 +228,34 @@ const handlePageChange = page => { pagination.page = page; loadData() }
 
 const loadRefs = async () => {
   try {
-    const [r, t] = await Promise.all([
+    const [r, t, v] = await Promise.all([
       request.get('/users/', { params: { role: 'resident', page_size: 200 } }),
-      request.get('/service-types/', { params: { is_active: true, page_size: 200 } })
+      request.get('/service-types/', { params: { is_active: true, page_size: 200 } }),
+      request.get('/users/', { params: { role: 'volunteer', page_size: 200 } })
     ])
     residents.value = unwrapPaginated(r).list
     types.value = unwrapPaginated(t).list
+    volunteers.value = unwrapPaginated(v).list
   } catch (e) { /* 拦截器提示 */ }
+}
+
+const volName = id => { const v = volunteers.value.find(x => x.id === id); return v ? v.username : `#${id}` }
+const volLabel = v => `${v.username}（${v.skills || '无技能'}${v.is_verified ? ' · 已认证' : ''}）`
+
+const openManual = row => {
+  manualSubId.value = row.id
+  manualIds.value = (row.rotation_group || []).map(m => m.id)
+  manualVisible.value = true
+}
+
+const saveManual = async () => {
+  manualSaving.value = true
+  try {
+    const res = await request.post(`/service-subscriptions/${manualSubId.value}/set-group/`, { volunteer_ids: manualIds.value })
+    ElMessage.success(res.message || '循环组已保存')
+    manualVisible.value = false
+    loadData()
+  } catch (e) { /* 拦截器提示 */ } finally { manualSaving.value = false }
 }
 
 const onTypeChange = id => {

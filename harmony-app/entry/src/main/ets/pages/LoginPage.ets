@@ -156,7 +156,7 @@ struct LoginPage {
           })
 
         // 注册入口
-        Button('注册新账号')
+        Button('注册新账号（居民）')
           .width('100%')
           .height(46)
           .fontSize(16)
@@ -167,6 +167,19 @@ struct LoginPage {
           .margin({ top: 14 })
           .onClick(() => {
             router.pushUrl({ url: 'pages/RegisterPage' })
+          })
+
+        Button('🦺 申请成为志愿者')
+          .width('100%')
+          .height(46)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.SUCCESS)
+          .backgroundColor('#F0FDF4')
+          .borderRadius(Theme.RADIUS_SM)
+          .margin({ top: 12 })
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/VolunteerApplyPage' })
           })
 
         // 演示账号提示区

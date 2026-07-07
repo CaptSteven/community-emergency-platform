@@ -8,6 +8,7 @@ import UserView from '../views/UserView.vue'
 import ServiceTypeView from '../views/ServiceTypeView.vue'
 import ServiceSubscriptionView from '../views/ServiceSubscriptionView.vue'
 import ServiceVisitView from '../views/ServiceVisitView.vue'
+import VolunteerApplicationView from '../views/VolunteerApplicationView.vue'
 import SingleTaskMapView from '../views/SingleTaskMapView.vue'
 import LeaderboardView from '../views/LeaderboardView.vue'
 
@@ -59,6 +60,10 @@ const router = createRouter({
         {
           path: 'users',
           component: UserView
+        },
+        {
+          path: 'volunteer-applications',
+          component: VolunteerApplicationView
         }
       ]
     }

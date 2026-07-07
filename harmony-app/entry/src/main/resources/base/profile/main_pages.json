@@ -9,6 +9,7 @@
     "pages/RouteNaviPage",
     "pages/VolunteerServicePage",
     "pages/ResidentServicePage",
-    "pages/VolunteerPointsPage"
+    "pages/VolunteerPointsPage",
+    "pages/VolunteerApplyPage"
   ]
 }

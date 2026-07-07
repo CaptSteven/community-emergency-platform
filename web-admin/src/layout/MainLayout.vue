@@ -56,6 +56,10 @@
             <el-icon><User /></el-icon>
             <span>用户管理</span>
           </el-menu-item>
+          <el-menu-item index="/volunteer-applications">
+            <el-icon><Stamp /></el-icon>
+            <span>志愿者审核</span>
+          </el-menu-item>
           <el-menu-item index="/notifications">
             <el-icon><Bell /></el-icon>
             <span>站内消息管理</span>
@@ -99,7 +103,7 @@
 import { onBeforeUnmount, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { DataLine, Calendar, Tickets, List, User, Bell, Location, Trophy } from '@element-plus/icons-vue'
+import { DataLine, Calendar, Tickets, List, User, Bell, Location, Trophy, Stamp } from '@element-plus/icons-vue'
 import { authState, clearAuth, initAuthFromStorage, loadUnreadCount } from '../stores/auth'
 
 const router = useRouter()
@@ -114,6 +118,7 @@ const ROUTE_NAMES = {
   '/single-tasks': '单次任务地图',
   '/leaderboard': '志愿排行榜',
   '/users': '用户管理',
+  '/volunteer-applications': '志愿者审核',
   '/notifications': '站内消息管理'
 }
 const pageName = computed(() => ROUTE_NAMES[route.path] || '概览')

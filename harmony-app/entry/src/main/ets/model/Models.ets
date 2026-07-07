@@ -258,6 +258,17 @@ export interface LeaderboardItem {
   completed_count: number
 }
 
+// 志愿者线上申请载荷
+export interface VolunteerApplyPayload {
+  username: string
+  password: string
+  phone: string
+  community: string
+  address: string
+  skills: string
+  note: string
+}
+
 // 居民申请周期服务载荷
 export interface CreateSubscriptionPayload {
   service_type: number

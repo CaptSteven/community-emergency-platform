@@ -1,6 +1,23 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import UserProfile
+from .models import UserProfile, VolunteerApplication
+
+
+class VolunteerApplicationSerializer(serializers.ModelSerializer):
+    """志愿者申请（管理端查看）：含账号名、状态、各证件图 URL。"""
+    username = serializers.CharField(source='user.username', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.username', read_only=True, default='')
+
+    class Meta:
+        model = VolunteerApplication
+        fields = [
+            'id', 'user', 'username', 'phone', 'community', 'address', 'skills', 'note',
+            'id_card_front', 'id_card_back', 'skill_cert', 'health_cert', 'profile_photo',
+            'status', 'status_display', 'review_note', 'reviewed_by', 'reviewed_by_name',
+            'reviewed_at', 'created_at',
+        ]
+        read_only_fields = ['user', 'status', 'reviewed_by', 'reviewed_at', 'created_at']
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -117,6 +134,7 @@ class UserListSerializer(serializers.ModelSerializer):
     location_updated_at = serializers.DateTimeField(source='profile.location_updated_at', read_only=True)
     is_available = serializers.BooleanField(source='profile.is_available', read_only=True)
     points = serializers.IntegerField(source='profile.points', read_only=True)
+    is_verified = serializers.BooleanField(source='profile.is_verified', read_only=True)
     monthly_cancel_count = serializers.SerializerMethodField()
 
     def get_monthly_cancel_count(self, obj):
@@ -143,6 +161,7 @@ class UserListSerializer(serializers.ModelSerializer):
             'location_updated_at',
             'is_available',
             'points',
+            'is_verified',
             'monthly_cancel_count',
         ]
 

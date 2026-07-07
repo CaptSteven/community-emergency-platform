@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
-from users.views import RegisterAPIView, LoginAPIView, MeAPIView, UserViewSet, UpdateMyLocationAPIView, EmergencyHelpAPIView, DeviceTokenAPIView
+from users.views import RegisterAPIView, LoginAPIView, MeAPIView, UserViewSet, UpdateMyLocationAPIView, EmergencyHelpAPIView, DeviceTokenAPIView, VolunteerApplicationViewSet
 from alerts.views import WarningViewSet
 from requests_app.views import HelpRequestViewSet
 from tasks.views import VolunteerTaskViewSet
@@ -63,6 +63,7 @@ router.register(r'users', UserViewSet)
 router.register(r'service-types', ServiceTypeViewSet)
 router.register(r'service-subscriptions', ServiceSubscriptionViewSet)
 router.register(r'service-visits', ServiceVisitViewSet)
+router.register(r'volunteer-applications', VolunteerApplicationViewSet)
 
 
 

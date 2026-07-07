@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
 
-from users.models import UserProfile
+from users.models import UserProfile, VolunteerApplication
 from alerts.models import Warning
 from resources.models import Shelter, Material
 from services.models import ServiceType, ServiceSubscription
@@ -180,6 +180,24 @@ class Command(BaseCommand):
 
         # 生成一批到期工单并自动派单，方便演示（不发通知，避免刷屏）
         scheduler.generate_due_visits(notify=False)
+
+        # 已在册志愿者默认为已认证
+        UserProfile.objects.filter(role='volunteer').update(is_verified=True)
+
+        # 一条待审核的志愿者线上申请示例（inactive 账号 + 申请记录，无图，供审核演示）
+        applicant, created = User.objects.get_or_create(username='apply_wang')
+        if created:
+            applicant.set_password('123456')
+            applicant.is_active = False
+            applicant.save()
+            UserProfile.objects.get_or_create(
+                user=applicant,
+                defaults=dict(role='volunteer', is_verified=False, phone='13900000001',
+                              community=COMMUNITY, skills='维修 家政'))
+            VolunteerApplication.objects.get_or_create(
+                user=applicant,
+                defaults=dict(phone='13900000001', community=COMMUNITY, skills='维修 家政',
+                              note='本人有 3 年水电维修经验，希望加入社区志愿服务。', status='pending'))
 
         # === 应急模块（保留为次要能力）===
         Warning.objects.get_or_create(

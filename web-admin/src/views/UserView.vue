@@ -58,6 +58,14 @@
             <span v-else class="muted">-</span>
           </template>
         </el-table-column>
+        <el-table-column label="认证" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.role === 'volunteer'" :type="row.is_verified ? 'success' : 'info'" effect="dark" size="small">
+              {{ row.is_verified ? '已认证' : '未认证' }}
+            </el-tag>
+            <span v-else class="muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="本月取消" width="100">
           <template #default="{ row }">
             <span
@@ -69,8 +77,11 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
+            <el-button v-if="row.role === 'volunteer'" size="small" :type="row.is_verified ? 'info' : 'success'" plain @click="toggleVerify(row)">
+              {{ row.is_verified ? '取消认证' : '认证' }}
+            </el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" type="danger" link @click="removeUser(row)">删除</el-button>
           </template>
@@ -130,6 +141,14 @@ const filters = reactive({ role: '', search: '' })
 const form = reactive({ username: '', password: '', role: 'volunteer', phone: '', community: '', address: '', skills: '' })
 
 const roleTagType = role => ({ admin: 'danger', volunteer: 'primary', resident: 'info' }[role] || 'info')
+
+const toggleVerify = async row => {
+  try {
+    const res = await request.post(`/users/${row.id}/verify/`)
+    ElMessage.success(res.message || '已更新认证状态')
+    loadData()
+  } catch (e) { /* 拦截器提示 */ }
+}
 
 const loadData = async () => {
   loading.value = true

@@ -177,6 +177,35 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
             'subscription': ServiceSubscriptionSerializer(sub).data,
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='set-group')
+    def set_group(self, request, pk=None):
+        """管理员手动指定循环组：传入有序的志愿者 id 列表，覆盖自动编排。"""
+        if not is_admin(request.user):
+            return Response({'message': '只有管理员可以编排循环组'}, status=status.HTTP_403_FORBIDDEN)
+        sub = self.get_object()
+        raw = _body(request).get('volunteer_ids')
+        if not isinstance(raw, list):
+            return Response({'message': 'volunteer_ids 必须是有序数组'}, status=status.HTTP_400_BAD_REQUEST)
+        ids = []
+        for v in raw:
+            try:
+                ids.append(int(v))
+            except (TypeError, ValueError):
+                return Response({'message': 'volunteer_ids 含非法 id'}, status=status.HTTP_400_BAD_REQUEST)
+        # 只保留仍是有效志愿者的 id，保持给定顺序、去重
+        valid = set(User.objects.filter(id__in=ids, is_active=True, profile__role='volunteer').values_list('id', flat=True))
+        ordered = []
+        for i in ids:
+            if i in valid and i not in ordered:
+                ordered.append(i)
+        sub.rotation_volunteers = ordered
+        sub.rotation_index = 0
+        sub.save(update_fields=['rotation_volunteers', 'rotation_index'])
+        return Response({
+            'message': f'已手动编排循环组，共 {len(ordered)} 名志愿者，按此顺序轮流服务。',
+            'subscription': ServiceSubscriptionSerializer(sub).data,
+        }, status=status.HTTP_200_OK)
+
 
 class ServiceVisitViewSet(viewsets.ModelViewSet):
     """上门服务工单：管理员全量；志愿者见自己的；居民见自己的。"""

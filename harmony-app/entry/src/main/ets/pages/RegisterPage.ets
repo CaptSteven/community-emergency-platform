@@ -127,6 +127,11 @@ struct RegisterPage {
       color: this.role === value ? Theme.PRIMARY : Theme.BORDER
     })
     .onClick(() => {
+      // 志愿者需线上申请+审核，不能直接注册
+      if (value === 'volunteer') {
+        router.pushUrl({ url: 'pages/VolunteerApplyPage' })
+        return
+      }
       this.role = value
     })
   }
