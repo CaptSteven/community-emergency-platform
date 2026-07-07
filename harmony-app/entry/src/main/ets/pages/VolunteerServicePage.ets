@@ -5,13 +5,15 @@ import { LocationService } from '../common/LocationService'
 import { ServiceVisitItem, CompleteVisitPayload, CancelVisitPayload, LocationResult } from '../model/Models'
 import { Theme } from '../common/Theme'
 
-// 百度路线导航参数：起点(当前定位) → 终点(服务点坐标)
+// 百度路线导航参数：起点(当前定位) → 终点(服务点坐标或地址)
 interface RouteNaviParams {
   oLat: number
   oLng: number
   dLat: number
   dLng: number
   destName: string
+  destAddress: string   // 无坐标时用地址，让百度自动地理编码规划路线
+  region: string        // 地址所在城市，辅助百度地理编码
 }
 
 @Entry
@@ -49,8 +51,10 @@ struct VolunteerServicePage {
   }
 
   async openBaiduNav(item: ServiceVisitItem) {
-    if (item.latitude === null || item.longitude === null) {
-      promptAction.showToast({ message: '该服务暂无坐标，无法导航' })
+    let hasCoord: boolean = item.latitude !== null && item.longitude !== null
+    let addr: string = item.address ? item.address : ''
+    if (!hasCoord && addr === '') {
+      promptAction.showToast({ message: '该服务暂无地址，无法导航' })
       return
     }
     let oLat: number = 43.8256
@@ -65,9 +69,11 @@ struct VolunteerServicePage {
     let params: RouteNaviParams = {
       oLat: oLat,
       oLng: oLng,
-      dLat: item.latitude as number,
-      dLng: item.longitude as number,
-      destName: item.service_type_name
+      dLat: hasCoord ? item.latitude as number : 0,
+      dLng: hasCoord ? item.longitude as number : 0,
+      destName: item.service_type_name,
+      destAddress: addr,
+      region: Session.community ? Session.community : '乌鲁木齐'
     }
     router.pushUrl({ url: 'pages/RouteNaviPage', params: params })
   }
@@ -227,7 +233,7 @@ struct VolunteerServicePage {
         .backgroundColor(Theme.SUCCESS_LIGHT).borderRadius(Theme.RADIUS_SM)
       }
 
-      if (item.latitude !== null && item.longitude !== null) {
+      if ((item.latitude !== null && item.longitude !== null) || (item.address !== undefined && item.address !== '')) {
         Button('🧭 百度地图导航')
           .width('100%').height(40).fontSize(14).fontColor(Color.White)
           .backgroundColor('#2563EB').borderRadius(Theme.RADIUS_SM).margin({ top: 12 })
@@ -314,7 +320,7 @@ struct VolunteerServicePage {
       // 顶部头部
       Row() {
         Button('‹ 返回')
-          .height(36).fontSize(14).fontColor(Color.White).backgroundColor('#ffffff33')
+          .height(36).fontSize(14).fontColor(Theme.PRIMARY).backgroundColor(Color.White)
           .borderRadius(Theme.RADIUS_SM)
           .onClick(() => { router.back() })
         Column() {

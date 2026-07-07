@@ -48,6 +48,8 @@ struct NotificationsPage {
   }
 
   categoryColor(category: string): string {
+    if (category === 'service') return '#16A34A'
+    if (category === 'system') return '#64748B'
     if (category === 'warning') return '#DC2626'
     if (category === 'help_request') return '#D97706'
     if (category === 'task') return '#2563EB'
@@ -80,8 +82,8 @@ struct NotificationsPage {
           Button('返回')
             .height(36)
             .fontSize(14)
-            .fontColor(Color.White)
-            .backgroundColor('#33FFFFFF')
+            .fontColor(Theme.PRIMARY)
+            .backgroundColor(Color.White)
             .borderRadius(Theme.RADIUS_SM)
             .padding({ left: 16, right: 16 })
             .onClick(() => {
@@ -146,7 +148,7 @@ struct NotificationsPage {
             .fontWeight(FontWeight.Medium)
             .fontColor(Theme.TEXT_BODY)
 
-          Text('预警、求助与任务通知会显示在这里')
+          Text('社区服务与系统通知会显示在这里')
             .fontSize(13)
             .fontColor(Theme.TEXT_MUTED)
             .margin({ top: 8 })
@@ -175,6 +177,8 @@ struct NotificationsPage {
                       .fontWeight(FontWeight.Bold)
                       .fontColor(Theme.TEXT)
                       .layoutWeight(1)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
 
                     Text(item.is_read ? '已读' : '未读')
                       .fontSize(12)
@@ -198,6 +202,8 @@ struct NotificationsPage {
                     .fontColor(Theme.TEXT_BODY)
                     .lineHeight(21)
                     .margin({ top: 10 })
+                    .maxLines(3)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
 
                   Text(item.created_at ? item.created_at.replace('T', ' ').slice(0, 19) : '')
                     .fontSize(12)

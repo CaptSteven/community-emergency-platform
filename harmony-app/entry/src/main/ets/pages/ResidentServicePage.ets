@@ -296,7 +296,7 @@ struct ResidentServicePage {
     Column() {
       Row() {
         Button('‹ 返回')
-          .height(36).fontSize(14).fontColor(Color.White).backgroundColor('#ffffff33')
+          .height(36).fontSize(14).fontColor(Theme.PRIMARY).backgroundColor(Color.White)
           .borderRadius(Theme.RADIUS_SM)
           .onClick(() => { router.back() })
         Column() {

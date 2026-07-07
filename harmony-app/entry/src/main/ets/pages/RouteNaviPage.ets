@@ -1,13 +1,15 @@
 import { webview } from '@kit.ArkWeb'
 import router from '@ohos.router'
 
-// 路线导航参数：起点(志愿者当前定位) → 终点(求助点/避难所)
+// 路线导航参数：起点(志愿者当前定位) → 终点(坐标或地址)
 interface RouteNaviParams {
   oLat: number
   oLng: number
   dLat: number
   dLng: number
   destName: string
+  destAddress?: string   // 无坐标时用地址，交给百度地理编码自动规划
+  region?: string        // 地址所在城市
 }
 
 // 应用内百度地图路线页：调用百度「路线规划 URI API」，在 WebView 中展示驾车路线。
@@ -21,14 +23,27 @@ struct RouteNaviPage {
 
   aboutToAppear() {
     let p = router.getParams() as RouteNaviParams
-    if (p !== undefined && p.dLat !== undefined && p.dLng !== undefined) {
-      this.title = p.destName ? p.destName : '路线导航'
+    if (p === undefined) {
+      return
+    }
+    this.title = p.destName ? p.destName : '路线导航'
+    let origin: string = '?origin=latlng:' + p.oLat + ',' + p.oLng + '|name:我的位置'
+    let destPart: string = ''
+    let hasCoord: boolean = p.dLat !== undefined && p.dLng !== undefined && (p.dLat !== 0 || p.dLng !== 0)
+    if (hasCoord) {
       let dest: string = encodeURIComponent(p.destName ? p.destName : '目的地')
-      this.naviUrl = 'https://api.map.baidu.com/direction'
-        + '?origin=latlng:' + p.oLat + ',' + p.oLng + '|name:我的位置'
-        + '&destination=latlng:' + p.dLat + ',' + p.dLng + '|name:' + dest
+      destPart = '&destination=latlng:' + p.dLat + ',' + p.dLng + '|name:' + dest
+    } else if (p.destAddress !== undefined && p.destAddress !== '') {
+      // 无坐标：直接用地址，百度自动地理编码规划路线
+      destPart = '&destination=' + encodeURIComponent(p.destAddress)
+      if (p.region !== undefined && p.region !== '') {
+        destPart += '&region=' + encodeURIComponent(p.region)
+      }
+    }
+    if (destPart !== '') {
+      this.naviUrl = 'https://api.map.baidu.com/direction' + origin + destPart
         + '&mode=driving&coord_type=gcj02&output=html'
-        + '&src=webapp.hmemergency.volunteer'
+        + '&src=webapp.hmservice.volunteer'
     }
   }
 
