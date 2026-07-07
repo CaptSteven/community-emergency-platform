@@ -47,6 +47,18 @@ struct NotificationsPage {
     }
   }
 
+  // 点击条目：弹窗看全文，并把未读标为已读
+  openDetail(item: NotificationItem) {
+    promptAction.showDialog({
+      title: item.title,
+      message: item.content + '\n\n' + (item.created_at ? item.created_at.replace('T', ' ').slice(0, 19) : ''),
+      buttons: [{ text: '知道了', color: '#2563EB' }]
+    }).catch(() => {})
+    if (!item.is_read) {
+      this.markRead(item.id)
+    }
+  }
+
   categoryColor(category: string): string {
     if (category === 'service') return '#16A34A'
     if (category === 'system') return '#64748B'
@@ -158,82 +170,45 @@ struct NotificationsPage {
         .justifyContent(FlexAlign.Center)
         .alignItems(HorizontalAlign.Center)
       } else {
-        List() {
+        // 条栏式：每条消息一行紧凑条目，点击查看全文并标记已读
+        List({ space: 8 }) {
           ForEach(this.notifications, (item: NotificationItem) => {
             ListItem() {
               Row() {
-                // 左侧分类色标
+                // 分类色点
                 Column()
-                  .width(5)
-                  .height('100%')
+                  .width(10).height(10).borderRadius(5)
                   .backgroundColor(this.categoryColor(item.category))
-                  .borderRadius(3)
-                  .margin({ right: 14 })
+                  .margin({ right: 12 })
 
                 Column() {
                   Row() {
                     Text(item.title)
-                      .fontSize(17)
-                      .fontWeight(FontWeight.Bold)
-                      .fontColor(Theme.TEXT)
-                      .layoutWeight(1)
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis })
-
-                    Text(item.is_read ? '已读' : '未读')
-                      .fontSize(12)
-                      .fontColor(Color.White)
-                      .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-                      .backgroundColor(item.is_read ? Theme.TEXT_MUTED : Theme.DANGER)
-                      .borderRadius(12)
-                  }
-                  .width('100%')
-
-                  Text(item.category_display)
-                    .fontSize(12)
-                    .fontColor(Color.White)
-                    .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-                    .backgroundColor(this.categoryColor(item.category))
-                    .borderRadius(12)
-                    .margin({ top: 10 })
+                      .fontSize(15).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT)
+                      .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                    Text(item.created_at ? item.created_at.slice(5, 16).replace('T', ' ') : '')
+                      .fontSize(11).fontColor(Theme.TEXT_MUTED).margin({ left: 8 })
+                  }.width('100%').alignItems(VerticalAlign.Center)
 
                   Text(item.content)
-                    .fontSize(14)
-                    .fontColor(Theme.TEXT_BODY)
-                    .lineHeight(21)
-                    .margin({ top: 10 })
-                    .maxLines(3)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-
-                  Text(item.created_at ? item.created_at.replace('T', ' ').slice(0, 19) : '')
-                    .fontSize(12)
-                    .fontColor(Theme.TEXT_MUTED)
-                    .margin({ top: 10 })
-
-                  if (!item.is_read) {
-                    Button('标记已读')
-                      .width('100%')
-                      .height(38)
-                      .fontSize(14)
-                      .fontColor(Color.White)
-                      .backgroundColor(Theme.PRIMARY)
-                      .borderRadius(Theme.RADIUS_SM)
-                      .margin({ top: 12 })
-                      .onClick(() => {
-                        this.markRead(item.id)
-                      })
-                  }
+                    .fontSize(13).fontColor(Theme.TEXT_MUTED)
+                    .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .margin({ top: 4 }).width('100%')
                 }
-                .layoutWeight(1)
-                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1).alignItems(HorizontalAlign.Start)
+
+                // 未读红点
+                if (!item.is_read) {
+                  Column().width(8).height(8).borderRadius(4)
+                    .backgroundColor(Theme.DANGER).margin({ left: 10 })
+                }
               }
               .width('100%')
-              .padding(16)
+              .padding({ left: 14, right: 14, top: 12, bottom: 12 })
               .backgroundColor(Theme.CARD)
-              .borderRadius(Theme.RADIUS)
-              .shadow({ radius: 16, color: '#14000000', offsetX: 0, offsetY: 4 })
+              .borderRadius(12)
+              .onClick(() => { this.openDetail(item) })
             }
-            .margin({ bottom: 12 })
           }, (item: NotificationItem) => item.id.toString())
         }
         .layoutWeight(1)
