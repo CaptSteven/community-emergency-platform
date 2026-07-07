@@ -93,8 +93,8 @@
         </el-table-column>
         <el-table-column label="时长" width="90" align="center">
           <template #default="{ row }">
-            <!-- 时长仅在完成后有值 -->
-            <span v-if="row.status === 'completed' && row.duration_minutes" class="duration">{{ row.duration_minutes }} 分钟</span>
+            <!-- 时长在志愿者提交完成后有值 -->
+            <span v-if="['pending_confirm', 'completed'].includes(row.status) && row.duration_minutes" class="duration">{{ row.duration_minutes }} 分钟</span>
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
@@ -165,7 +165,7 @@
         <el-descriptions-item label="状态">
           <el-tag :type="statusType(current.status)" effect="dark" size="small">{{ current.status_display }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item v-if="current.status === 'completed' && current.duration_minutes" label="服务时长">{{ current.duration_minutes }} 分钟</el-descriptions-item>
+        <el-descriptions-item v-if="['pending_confirm', 'completed'].includes(current.status) && current.duration_minutes" label="服务时长">{{ current.duration_minutes }} 分钟</el-descriptions-item>
         <el-descriptions-item label="需求说明">{{ current.note || '—' }}</el-descriptions-item>
         <el-descriptions-item label="服务地址">{{ current.address || '—' }}</el-descriptions-item>
         <el-descriptions-item v-if="current.needs_health_record" label="血压">{{ current.systolic || '—' }}/{{ current.diastolic || '—' }} mmHg</el-descriptions-item>
@@ -173,9 +173,13 @@
         <el-descriptions-item v-if="current.needs_health_record" label="体温">{{ current.temperature || '—' }} ℃</el-descriptions-item>
         <el-descriptions-item v-if="current.health_note" label="健康备注">{{ current.health_note }}</el-descriptions-item>
         <el-descriptions-item label="服务反馈">{{ current.feedback || '—' }}</el-descriptions-item>
-        <el-descriptions-item v-if="current.completion_photo" label="完成凭证">
+        <el-descriptions-item v-if="current.completion_photo" label="志愿者凭证">
           <el-image style="width:120px" :src="photoUrl(current.completion_photo)" :preview-src-list="[photoUrl(current.completion_photo)]" fit="cover" />
         </el-descriptions-item>
+        <el-descriptions-item v-if="current.confirm_photo" label="居民确认照">
+          <el-image style="width:120px" :src="photoUrl(current.confirm_photo)" :preview-src-list="[photoUrl(current.confirm_photo)]" fit="cover" />
+        </el-descriptions-item>
+        <el-descriptions-item v-if="current.confirmed_at" label="确认时间">{{ current.confirmed_at.replace('T', ' ').slice(0, 19) }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
@@ -193,6 +197,7 @@ import { buildPageParams, unwrapPaginated } from '../utils/pagination'
 const STATUS = [
   { value: 'assigned', label: '已排班' },
   { value: 'processing', label: '服务中' },
+  { value: 'pending_confirm', label: '待居民确认' },
   { value: 'completed', label: '已完成' },
   { value: 'cancelled', label: '已取消' },
   { value: 'missed', label: '已错过' }
@@ -200,11 +205,13 @@ const STATUS = [
 
 // 统一状态色
 const STATUS_COLOR = {
-  assigned: '#F59E0B', processing: '#2563EB', completed: '#16A34A', cancelled: '#94A3B8', missed: '#EF4444'
+  assigned: '#F59E0B', processing: '#2563EB', pending_confirm: '#8B5CF6',
+  completed: '#16A34A', cancelled: '#94A3B8', missed: '#EF4444'
 }
 
 const statusType = s => ({
-  assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'info', missed: 'danger'
+  assigned: 'warning', processing: 'primary', pending_confirm: 'warning',
+  completed: 'success', cancelled: 'info', missed: 'danger'
 }[s] || 'info')
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/api\/?$/, '')

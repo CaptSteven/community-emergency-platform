@@ -78,11 +78,11 @@ class ServiceVisitSerializer(serializers.ModelSerializer):
             'id', 'subscription', 'service_type', 'service_type_name', 'service_type_icon',
             'needs_health_record', 'resident', 'resident_name', 'volunteer', 'volunteer_name',
             'scheduled_date', 'status', 'status_display', 'address', 'latitude', 'longitude',
-            'note', 'duration_minutes', 'feedback', 'completion_photo',
+            'note', 'duration_minutes', 'feedback', 'completion_photo', 'confirm_photo',
             'systolic', 'diastolic', 'heart_rate', 'temperature', 'health_note',
-            'started_at', 'completed_at', 'created_at',
+            'started_at', 'completed_at', 'confirmed_at', 'created_at',
         ]
         read_only_fields = [
-            'service_type', 'resident', 'volunteer', 'status', 'completion_photo',
-            'started_at', 'completed_at', 'created_at',
+            'service_type', 'resident', 'volunteer', 'status', 'completion_photo', 'confirm_photo',
+            'started_at', 'completed_at', 'confirmed_at', 'created_at',
         ]

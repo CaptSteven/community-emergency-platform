@@ -115,8 +115,9 @@ def has_open_visit(subscription):
 
 
 def create_visit_for(subscription, today, notify=True):
-    """为一个到期计划生成一张工单并自动派单；返回 ServiceVisit。
-    优先按循环组轮换(若已建组)；否则回退到负载最小的合格志愿者。"""
+    """为一个到期计划生成一张工单并自动派单；返回 ServiceVisit，无可派志愿者则返回 None。
+    优先按循环组轮换(若已建组)；否则回退到负载最小的合格志愿者。
+    关键：若既无循环组、又匹配不到可用志愿者，则不生成「无人接」的空工单（返回 None，由上层跳过并汇报）。"""
     community = community_of(subscription.resident)
     if subscription.rotation_volunteers:
         volunteer = next_rotation_volunteer(subscription)
@@ -124,6 +125,9 @@ def create_visit_for(subscription, today, notify=True):
             volunteer = pick_volunteer(subscription.service_type, community)
     else:
         volunteer = pick_volunteer(subscription.service_type, community)
+    if volunteer is None:
+        # 无循环组且无合格志愿者：拒绝生成空工单，也不推进 last_generated_date（下次仍会尝试）
+        return None
     visit = ServiceVisit.objects.create(
         subscription=subscription,
         service_type=subscription.service_type,
@@ -143,10 +147,16 @@ def create_visit_for(subscription, today, notify=True):
 
 
 def generate_due_visits(today=None, notify=True):
-    """遍历所有到期且无进行中工单的服务计划，批量生成工单并派单。"""
+    """遍历所有到期且无进行中工单的服务计划，批量生成工单并派单。
+
+    返回 (created, skipped)：
+    - created：成功生成并派单的 ServiceVisit 列表；
+    - skipped：因无循环组且无可用志愿者而跳过的计划信息 [{'subscription','resident','service_type'}]。
+    """
     if today is None:
         today = date.today()
     created = []
+    skipped = []
     subs = ServiceSubscription.objects.filter(is_active=True).select_related(
         'service_type', 'resident'
     )
@@ -155,8 +165,61 @@ def generate_due_visits(today=None, notify=True):
             continue
         if has_open_visit(sub):
             continue
-        created.append(create_visit_for(sub, today, notify=notify))
-    return created
+        visit = create_visit_for(sub, today, notify=notify)
+        if visit is None:
+            skipped.append({
+                'subscription': sub.id,
+                'resident': sub.resident.username,
+                'service_type': sub.service_type.name,
+            })
+            continue
+        created.append(visit)
+    return created, skipped
+
+
+def finalize_visit(visit):
+    """把「待居民确认」工单结单为「已完成」，给志愿者计分并通知。返回本次积分。
+
+    唯一的计分落点（居民 confirm 与 auto_confirm_stale 共用），避免重复计分。
+    """
+    from django.utils import timezone
+    from notifications.utils import create_notification
+
+    visit.status = 'completed'
+    visit.confirmed_at = timezone.now()
+    visit.save(update_fields=['status', 'confirm_photo', 'confirmed_at'])
+
+    # 志愿积分：每次服务基础 10 分 + 每满 30 分钟加 5 分
+    earned = 10 + ((visit.duration_minutes or 0) // 30) * 5
+    vol = visit.volunteer
+    vp = getattr(vol, 'profile', None) if vol else None
+    if vp is not None:
+        vp.points = (vp.points or 0) + earned
+        vp.save(update_fields=['points'])
+        create_notification(
+            recipient=vol,
+            title='居民已确认服务完成',
+            content=f'{visit.resident.username} 已确认你的「{visit.service_type.name}」服务，获得 {earned} 积分。',
+            category='service', related_type='service_visit', related_id=visit.id,
+        )
+    return earned
+
+
+def auto_confirm_stale(days=7, now=None):
+    """把超过 N 天仍未被居民确认的「待居民确认」工单自动结单并计分。返回自动确认的数量。"""
+    from django.utils import timezone
+
+    if now is None:
+        now = timezone.now()
+    deadline = now - timedelta(days=days)
+    stale = ServiceVisit.objects.filter(
+        status='pending_confirm', completed_at__lt=deadline
+    ).select_related('volunteer', 'volunteer__profile', 'resident', 'service_type')
+    count = 0
+    for visit in stale:
+        finalize_visit(visit)
+        count += 1
+    return count
 
 
 def _notify_new_visit(visit):

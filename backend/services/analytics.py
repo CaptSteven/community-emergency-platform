@@ -36,7 +36,7 @@ class ServiceOverviewAPIView(APIView):
             'visits_this_week': week_visits.count(),
             'completed_this_week': week_visits.filter(status='completed').count(),
             'pending_visits': ServiceVisit.objects.filter(
-                status__in=['assigned', 'processing']
+                status__in=['assigned', 'processing', 'pending_confirm']
             ).count(),
             'unassigned_visits': ServiceVisit.objects.filter(
                 status='assigned', volunteer__isnull=True

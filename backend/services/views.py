@@ -142,13 +142,18 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
         """管理员触发：为所有到期服务计划生成工单并自动轮流派单。"""
         if not is_admin(request.user):
             return Response({'message': '只有管理员可以生成排班'}, status=status.HTTP_403_FORBIDDEN)
-        created = scheduler.generate_due_visits()
+        created, skipped = scheduler.generate_due_visits()
         assigned = sum(1 for v in created if v.volunteer_id)
+        msg = f'本次生成 {len(created)} 张工单，其中 {assigned} 张已自动派单。'
+        if skipped:
+            msg += f'另有 {len(skipped)} 个计划无可用志愿者（且未编排循环组），已跳过、未生成工单，请先编排循环组或补充志愿者。'
         return Response({
-            'message': f'本次生成 {len(created)} 张工单，其中 {assigned} 张已自动派单。',
+            'message': msg,
             'created': len(created),
             'assigned': assigned,
             'unassigned': len(created) - assigned,
+            'skipped': len(skipped),
+            'skipped_detail': skipped,
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='generate-now')
@@ -160,6 +165,11 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
         if scheduler.has_open_visit(sub):
             return Response({'message': '该计划已有进行中的工单'}, status=status.HTTP_400_BAD_REQUEST)
         visit = scheduler.create_visit_for(sub, date.today())
+        if visit is None:
+            return Response(
+                {'message': '该计划无可用志愿者且未编排循环组，未生成工单。请先「一键/手动编排」循环组或补充合格志愿者。'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response({
             'message': '已生成工单' + ('并自动派单' if visit.volunteer_id else '，暂无匹配志愿者'),
             'visit': ServiceVisitSerializer(visit).data,
@@ -367,7 +377,8 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if 'photo' in request.FILES:
             visit.completion_photo = request.FILES['photo']
 
-        visit.status = 'completed'
+        # 志愿者提交后进入「待居民确认」，由被服务居民确认后才真正完成并计分（见 confirm）
+        visit.status = 'pending_confirm'
         visit.completed_at = timezone.now()
         # 服务时长：有开始时间按实际时长，否则取服务类型预计时长
         if visit.started_at:
@@ -377,20 +388,31 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             visit.duration_minutes = visit.service_type.duration_minutes or 30
         visit.save()
 
-        # 志愿积分：每次服务基础 10 分 + 每满 30 分钟加 5 分
-        earned = 10 + (visit.duration_minutes // 30) * 5
-        vp = profile  # 已在上方取到 volunteer 的 profile
-        vp.points = (vp.points or 0) + earned
-        vp.save(update_fields=['points'])
-
         create_notification(
             recipient=visit.resident,
-            title='上门服务已完成',
-            content=f'志愿者 {request.user.username} 已完成「{visit.service_type.name}」服务。',
+            title='上门服务待你确认',
+            content=f'志愿者 {request.user.username} 提交了「{visit.service_type.name}」服务完成，请拍照确认。',
             category='service', related_type='service_visit', related_id=visit.id,
         )
         return Response({
-            'message': f'服务已完成，本次获得 {earned} 积分',
+            'message': '已提交完成，等待居民确认',
+            'visit': ServiceVisitSerializer(visit).data,
+        })
+
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        """居民确认上门服务已完成：待居民确认 -> 已完成，可上传确认照片，确认后给志愿者计分。"""
+        visit = self.get_object()
+        profile = _profile(request.user)
+        if profile is None or profile.role != 'resident' or visit.resident_id != request.user.id:
+            return Response({'message': '只能确认自己的服务'}, status=status.HTTP_403_FORBIDDEN)
+        if visit.status != 'pending_confirm':
+            return Response({'message': '当前状态不可确认'}, status=status.HTTP_400_BAD_REQUEST)
+        if 'photo' in request.FILES:
+            visit.confirm_photo = request.FILES['photo']
+        earned = scheduler.finalize_visit(visit)
+        return Response({
+            'message': f'已确认完成，志愿者获得 {earned} 积分',
             'earned_points': earned,
             'visit': ServiceVisitSerializer(visit).data,
         })

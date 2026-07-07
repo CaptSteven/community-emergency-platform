@@ -199,6 +199,7 @@ export interface ServiceVisitItem {
   duration_minutes: number // 本次服务时长（分钟）
   feedback: string
   completion_photo: string | null
+  confirm_photo: string | null     // 居民确认时上传的凭证照片
   systolic: number | null
   diastolic: number | null
   heart_rate: number | null
@@ -206,6 +207,7 @@ export interface ServiceVisitItem {
   health_note: string
   started_at: string | null
   completed_at: string | null
+  confirmed_at: string | null      // 居民确认完成时间
   created_at: string
 }
 
@@ -246,6 +248,11 @@ export interface MyStats {
   total_minutes: number
   week_minutes: number
   completed_count: number
+}
+
+// 站内消息未读数（GET /notifications/unread_count/）
+export interface UnreadCount {
+  unread_count: number
 }
 
 // 志愿积分排行榜条目

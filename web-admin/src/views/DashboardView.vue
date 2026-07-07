@@ -169,13 +169,13 @@ const progressCards = computed(() => {
   return [
     { icon: Files, label: '累计工单', value: o.visits_total || 0, desc: '平台生成的全部上门工单' },
     { icon: CircleCheck, label: '已完成工单', value: o.visits_completed || 0, desc: `完成率 ${completionRate.value}%`, tint: 'service' },
-    { icon: Clock, label: '进行中工单', value: o.pending_visits || 0, desc: '已排班 / 服务中' },
+    { icon: Clock, label: '进行中工单', value: o.pending_visits || 0, desc: '已排班 / 服务中 / 待确认' },
     { icon: Select, label: '本周完成', value: o.completed_this_week || 0, desc: '近 7 日已完成上门', tint: 'service' },
   ]
 })
 
 const statusTagType = status => {
-  const map = { completed: 'success', processing: 'warning', assigned: 'primary', pending: 'info', unassigned: 'danger', cancelled: 'info' }
+  const map = { completed: 'success', processing: 'warning', pending_confirm: 'warning', assigned: 'primary', pending: 'info', unassigned: 'danger', cancelled: 'info' }
   return map[status] || 'info'
 }
 

@@ -2,7 +2,7 @@ import router from '@ohos.router'
 import { Api, Session } from '../common/Api'
 import { LocationService } from '../common/LocationService'
 import { common } from '@kit.AbilityKit'
-import { UpdateLocationPayload, LocationResult } from '../model/Models'
+import { UpdateLocationPayload, LocationResult, UnreadCount } from '../model/Models'
 import { Theme } from '../common/Theme'
 
 // 志愿者端主页：纯社区服务，无任何应急任务 / 灾害预警。
@@ -11,6 +11,7 @@ import { Theme } from '../common/Theme'
 @Entry
 @Component
 struct VolunteerHomePage {
+  @State unreadCount: number = 0
   private reportTimer: number = -1
 
   aboutToAppear() {
@@ -18,6 +19,20 @@ struct VolunteerHomePage {
     this.reportTimer = setInterval(() => {
       this.reportLocation()
     }, 60000)
+  }
+
+  // 每次回到首页刷新未读数，让「已读」真正有意义
+  onPageShow() {
+    this.loadUnread()
+  }
+
+  async loadUnread() {
+    try {
+      let res = await Api.get('/notifications/unread_count/') as UnreadCount
+      this.unreadCount = res.unread_count
+    } catch (err) {
+      // 未读数非核心，失败静默
+    }
   }
 
   aboutToDisappear() {
@@ -75,11 +90,16 @@ struct VolunteerHomePage {
             }
             .layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 14 })
 
-            // 消息小图标
-            Text('✉️')
-              .fontSize(18).width(40).height(40).textAlign(TextAlign.Center)
-              .backgroundColor('#33FFFFFF').borderRadius(20)
-              .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
+            // 消息小图标（带未读角标）
+            Badge({
+              count: this.unreadCount, maxCount: 99, position: BadgePosition.RightTop,
+              style: { badgeSize: 16, badgeColor: '#EF4444', fontSize: 10 }
+            }) {
+              Text('✉️')
+                .fontSize(18).width(40).height(40).textAlign(TextAlign.Center)
+                .backgroundColor('#33FFFFFF').borderRadius(20)
+            }
+            .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
             // 退出小图标
             Text('⏻')
               .fontSize(18).fontColor(Color.White).width(40).height(40).textAlign(TextAlign.Center)
@@ -104,7 +124,7 @@ struct VolunteerHomePage {
           Column() {
             Text('我的上门服务')
               .fontSize(Theme.FS_TITLE).fontWeight(FontWeight.Bold).fontColor(Color.White)
-            Text('社区长期服务 · 长者关怀 · 录入健康记录')
+            Text('待办排班 · 服务历史 · 健康记录')
               .fontSize(Theme.FS_SMALL).fontColor('#E0F2F1').margin({ top: 6 })
           }.layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 14 })
           Text('›').fontSize(32).fontColor(Color.White)
@@ -123,34 +143,26 @@ struct VolunteerHomePage {
         }
         .width('90%').margin({ top: 22, bottom: 12 }).justifyContent(FlexAlign.Start)
 
-        // ===== 功能宫格：3 个圆角小卡 =====
+        // ===== 功能宫格：2 个圆角小卡（排班/待办已并入上方「我的上门服务」）=====
         Row() {
-          // 站内消息
+          // 站内消息（带未读角标）
           Column() {
-            Text('✉️')
-              .fontSize(26).width(50).height(50).textAlign(TextAlign.Center)
-              .backgroundColor(Theme.PRIMARY_LIGHT_BG).borderRadius(15)
-            Text('站内消息')
-              .fontSize(13).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).margin({ top: 10 })
+            Badge({
+              count: this.unreadCount, maxCount: 99, position: BadgePosition.RightTop,
+              style: { badgeSize: 18, badgeColor: '#EF4444', fontSize: 11 }
+            }) {
+              Text('✉️')
+                .fontSize(26).width(50).height(50).textAlign(TextAlign.Center)
+                .backgroundColor(Theme.PRIMARY_LIGHT_BG).borderRadius(15)
+            }
+            Text(this.unreadCount > 0 ? `站内消息（${this.unreadCount} 未读）` : '站内消息')
+              .fontSize(13).fontWeight(FontWeight.Medium)
+              .fontColor(this.unreadCount > 0 ? Theme.DANGER : Theme.TEXT).margin({ top: 10 })
           }
           .layoutWeight(1).padding({ top: 16, bottom: 16 }).alignItems(HorizontalAlign.Center)
           .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
           .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
           .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
-
-          // 我的排班
-          Column() {
-            Text('🗓️')
-              .fontSize(26).width(50).height(50).textAlign(TextAlign.Center)
-              .backgroundColor(Theme.SUCCESS_LIGHT).borderRadius(15)
-            Text('我的排班')
-              .fontSize(13).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).margin({ top: 10 })
-          }
-          .layoutWeight(1).margin({ left: 10, right: 10 }).padding({ top: 16, bottom: 16 })
-          .alignItems(HorizontalAlign.Center)
-          .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-          .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
-          .onClick(() => { router.pushUrl({ url: 'pages/VolunteerServicePage' }) })
 
           // 我的积分 → 积分与排行榜页
           Column() {
@@ -160,7 +172,8 @@ struct VolunteerHomePage {
             Text('我的积分')
               .fontSize(13).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).margin({ top: 10 })
           }
-          .layoutWeight(1).padding({ top: 16, bottom: 16 }).alignItems(HorizontalAlign.Center)
+          .layoutWeight(1).margin({ left: 10 }).padding({ top: 16, bottom: 16 })
+          .alignItems(HorizontalAlign.Center)
           .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
           .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
           .onClick(() => { router.pushUrl({ url: 'pages/VolunteerPointsPage' }) })

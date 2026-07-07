@@ -114,6 +114,7 @@ class ServiceVisit(models.Model):
     STATUS_CHOICES = (
         ('assigned', '已排班'),
         ('processing', '服务中'),
+        ('pending_confirm', '待居民确认'),
         ('completed', '已完成'),
         ('cancelled', '已取消'),
         ('missed', '已错过'),
@@ -150,6 +151,10 @@ class ServiceVisit(models.Model):
     completion_photo = models.FileField(
         upload_to='service_visits/', null=True, blank=True, verbose_name='完成凭证照片'
     )
+    # 居民确认完成时上传的凭证照片（与志愿者 completion_photo 并存）
+    confirm_photo = models.FileField(
+        upload_to='service_visits/', null=True, blank=True, verbose_name='居民确认照片'
+    )
 
     # 健康记录字段（仅健康检查类服务使用，其余留空）
     systolic = models.IntegerField(null=True, blank=True, verbose_name='收缩压(高压)')
@@ -161,7 +166,8 @@ class ServiceVisit(models.Model):
     health_note = models.TextField(blank=True, default='', verbose_name='健康备注')
 
     started_at = models.DateTimeField(null=True, blank=True, verbose_name='开始时间')
-    completed_at = models.DateTimeField(null=True, blank=True, verbose_name='完成时间')
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name='志愿者提交完成时间')
+    confirmed_at = models.DateTimeField(null=True, blank=True, verbose_name='居民确认完成时间')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
 
     class Meta:

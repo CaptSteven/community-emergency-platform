@@ -1,13 +1,30 @@
 import router from '@ohos.router'
-import { Session } from '../common/Api'
+import { Api, Session } from '../common/Api'
+import { UnreadCount } from '../model/Models'
 import { Theme } from '../common/Theme'
 import { common } from '@kit.AbilityKit'
 
 // 居民端主页：纯社区服务，无任何灾害预警 / 应急求助入口。
-// 首页视觉重做：品牌问候渐变头 + 醒目大卡入口 + 圆角功能宫格 + 温暖引导卡。
+// 首页视觉重做：品牌问候渐变头 + 醒目大卡入口 + 站内消息(未读角标) + 温暖引导卡。
 @Entry
 @Component
 struct ResidentHomePage {
+  @State unreadCount: number = 0
+
+  // 每次回到首页刷新未读数，让「已读」真正有意义
+  onPageShow() {
+    this.loadUnread()
+  }
+
+  async loadUnread() {
+    try {
+      let res = await Api.get('/notifications/unread_count/') as UnreadCount
+      this.unreadCount = res.unread_count
+    } catch (err) {
+      // 未读数非核心，失败静默
+    }
+  }
+
   // 头像首字：取用户名首字，无则用 emoji 兜底
   private avatarChar(): string {
     return Session.username.length > 0 ? Session.username.substring(0, 1) : '🙂'
@@ -43,11 +60,16 @@ struct ResidentHomePage {
             }
             .layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 14 })
 
-            // 消息小图标
-            Text('✉️')
-              .fontSize(18).width(40).height(40).textAlign(TextAlign.Center)
-              .backgroundColor('#33FFFFFF').borderRadius(20)
-              .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
+            // 消息小图标（带未读角标）
+            Badge({
+              count: this.unreadCount, maxCount: 99, position: BadgePosition.RightTop,
+              style: { badgeSize: 16, badgeColor: '#EF4444', fontSize: 10 }
+            }) {
+              Text('✉️')
+                .fontSize(18).width(40).height(40).textAlign(TextAlign.Center)
+                .backgroundColor('#33FFFFFF').borderRadius(20)
+            }
+            .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
             // 退出小图标
             Text('⏻')
               .fontSize(18).fontColor(Color.White).width(40).height(40).textAlign(TextAlign.Center)
@@ -72,7 +94,7 @@ struct ResidentHomePage {
           Column() {
             Text('我的社区服务')
               .fontSize(Theme.FS_TITLE).fontWeight(FontWeight.Bold).fontColor(Color.White)
-            Text('申请周期上门 · 长者关怀 · 健康记录')
+            Text('提交任务 · 周期计划 · 上门记录')
               .fontSize(Theme.FS_SMALL).fontColor('#E0F2F1').margin({ top: 6 })
           }.layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 14 })
           Text('›').fontSize(32).fontColor(Color.White)
@@ -91,49 +113,30 @@ struct ResidentHomePage {
         }
         .width('90%').margin({ top: 22, bottom: 12 }).justifyContent(FlexAlign.Start)
 
-        // ===== 功能宫格：3 个圆角小卡 =====
+        // ===== 站内消息（唯一常用入口，带未读角标；服务相关操作都在上方大卡内的 Tab 里）=====
         Row() {
-          // 站内消息
-          Column() {
+          Badge({
+            count: this.unreadCount, maxCount: 99, position: BadgePosition.RightTop,
+            style: { badgeSize: 18, badgeColor: '#EF4444', fontSize: 11 }
+          }) {
             Text('✉️')
-              .fontSize(26).width(50).height(50).textAlign(TextAlign.Center)
-              .backgroundColor(Theme.PRIMARY_LIGHT_BG).borderRadius(15)
+              .fontSize(26).width(52).height(52).textAlign(TextAlign.Center)
+              .backgroundColor(Theme.PRIMARY_LIGHT_BG).borderRadius(16)
+          }
+          Column() {
             Text('站内消息')
-              .fontSize(13).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).margin({ top: 10 })
-          }
-          .layoutWeight(1).padding({ top: 16, bottom: 16 }).alignItems(HorizontalAlign.Center)
-          .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-          .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
-          .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
-
-          // 提交单次任务（占位跳转到社区服务页）
-          Column() {
-            Text('📝')
-              .fontSize(26).width(50).height(50).textAlign(TextAlign.Center)
-              .backgroundColor(Theme.SUCCESS_LIGHT).borderRadius(15)
-            Text('提交任务')
-              .fontSize(13).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).margin({ top: 10 })
-          }
-          .layoutWeight(1).margin({ left: 10, right: 10 }).padding({ top: 16, bottom: 16 })
-          .alignItems(HorizontalAlign.Center)
-          .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-          .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
-          .onClick(() => { router.pushUrl({ url: 'pages/ResidentServicePage' }) })
-
-          // 我的服务记录
-          Column() {
-            Text('📋')
-              .fontSize(26).width(50).height(50).textAlign(TextAlign.Center)
-              .backgroundColor(Theme.SKY_LIGHT_BG).borderRadius(15)
-            Text('服务记录')
-              .fontSize(13).fontWeight(FontWeight.Medium).fontColor(Theme.TEXT).margin({ top: 10 })
-          }
-          .layoutWeight(1).padding({ top: 16, bottom: 16 }).alignItems(HorizontalAlign.Center)
-          .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-          .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
-          .onClick(() => { router.pushUrl({ url: 'pages/ResidentServicePage' }) })
+              .fontSize(Theme.FS_BODY).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT)
+            Text(this.unreadCount > 0 ? `有 ${this.unreadCount} 条未读消息` : '暂无未读消息')
+              .fontSize(Theme.FS_SMALL)
+              .fontColor(this.unreadCount > 0 ? Theme.DANGER : Theme.TEXT_MUTED)
+              .margin({ top: 5 })
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 14 })
+          Text('›').fontSize(26).fontColor(Theme.TEXT_MUTED)
         }
-        .width('90%')
+        .width('90%').padding(16).alignItems(VerticalAlign.Center)
+        .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
+        .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
+        .onClick(() => { router.pushUrl({ url: 'pages/NotificationsPage' }) })
 
         // ===== 底部温暖引导卡 =====
         Column() {

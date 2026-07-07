@@ -1,5 +1,8 @@
 import router from '@ohos.router'
 import promptAction from '@ohos.promptAction'
+import picker from '@ohos.file.picker'
+import fs from '@ohos.file.fs'
+import { common } from '@kit.AbilityKit'
 import { Api, Session } from '../common/Api'
 import { ServiceTypeItem, ServiceSubscriptionItem, ServiceVisitItem, CreateSubscriptionPayload, RequestOncePayload } from '../model/Models'
 import { Theme } from '../common/Theme'
@@ -13,6 +16,7 @@ struct ResidentServicePage {
   @State singleTypes: ServiceTypeItem[] = []       // 可用于单次任务的服务类别
   @State recurringTypes: ServiceTypeItem[] = []    // 可用于周期计划的服务类别
   @State loading: boolean = false
+  @State curTab: number = 0                       // 0=单次任务 1=周期计划 2=上门记录
   // 提交单次任务表单
   @State showOnce: boolean = false
   @State onceTypeId: number = 0
@@ -147,6 +151,47 @@ struct ResidentServicePage {
     }
   }
 
+  // 居民确认服务完成：可选拍照留凭证；确认后志愿者才计分
+  async confirmVisit(item: ServiceVisitItem) {
+    let withPhoto: boolean = false
+    try {
+      let res = await promptAction.showActionMenu({
+        title: '确认志愿者已完成本次服务？',
+        buttons: [
+          { text: '📷 选择照片并确认', color: '#2563EB' },
+          { text: '直接确认完成', color: '#16A34A' }
+        ]
+      })
+      withPhoto = res.index === 0
+    } catch (err) {
+      return  // 用户取消
+    }
+    try {
+      if (withPhoto) {
+        // 选一张凭证照 → 拷到缓存 → 随 confirm 一并 multipart 上传
+        let photoPicker = new picker.PhotoViewPicker()
+        let sel = await photoPicker.select({ MIMEType: picker.PhotoViewMIMETypes.IMAGE_TYPE, maxSelectNumber: 1 })
+        if (!sel.photoUris || sel.photoUris.length === 0) {
+          return
+        }
+        let ctx = getContext(this) as common.UIAbilityContext
+        let name: string = 'confirm_' + item.id + '.jpg'
+        let src = fs.openSync(sel.photoUris[0], fs.OpenMode.READ_ONLY)
+        let dst = fs.openSync(ctx.cacheDir + '/' + name, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
+        fs.copyFileSync(src.fd, dst.fd)
+        fs.closeSync(src)
+        fs.closeSync(dst)
+        await Api.uploadFile(`/service-visits/${item.id}/confirm/`, 'internal://cache/' + name, 'photo')
+      } else {
+        await Api.postEmpty(`/service-visits/${item.id}/confirm/`)
+      }
+      promptAction.showToast({ message: '已确认完成，感谢志愿者的服务 ❤️', duration: 3000 })
+      this.loadAll()
+    } catch (err) {
+      promptAction.showToast({ message: '确认失败：' + (err as Error).message })
+    }
+  }
+
   async submitSubscribe() {
     if (this.selectedTypeId === 0) {
       promptAction.showToast({ message: '请选择服务类型' })
@@ -174,6 +219,33 @@ struct ResidentServicePage {
     } catch (err) {
       promptAction.showToast({ message: '提交失败：' + (err as Error).message })
     }
+  }
+
+  // 自定义 Tab 标签：选中高亮 + 数量提示 + 底部指示条
+  @Builder
+  TabTitle(idx: number, title: string, count: number) {
+    Column() {
+      Text(count > 0 ? `${title}(${count})` : title)
+        .fontSize(15)
+        .fontWeight(this.curTab === idx ? FontWeight.Bold : FontWeight.Normal)
+        .fontColor(this.curTab === idx ? Theme.PRIMARY : Theme.TEXT_MUTED)
+      Divider().width(28).strokeWidth(3)
+        .color(this.curTab === idx ? Theme.PRIMARY : Color.Transparent)
+        .margin({ top: 6 })
+    }.justifyContent(FlexAlign.Center).height('100%')
+  }
+
+  // 空状态占位卡
+  @Builder
+  EmptyState(emoji: string, title: string, tip: string) {
+    Column() {
+      Text(emoji).fontSize(40)
+      Text(title).fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
+      Text(tip).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
+    }
+    .width('100%').padding({ top: 32, bottom: 32 })
+    .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+    .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
   }
 
   @Builder
@@ -256,8 +328,8 @@ struct ResidentServicePage {
           Text(item.note).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_BODY).margin({ left: 6 }).layoutWeight(1)
         }.width('100%').margin({ top: 8 })
       }
-      if (item.status === 'completed' && item.needs_health_record) {
-        // 健康记录：分隔 + 徽章展示，更醒目易读
+      if ((item.status === 'pending_confirm' || item.status === 'completed') && item.needs_health_record) {
+        // 健康记录：分隔 + 徽章展示，更醒目易读（待确认时也展示，供居民核对后确认）
         Row() {
           Text('❤️').fontSize(14)
           Text('本次健康记录').fontSize(Theme.FS_SMALL).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ left: 6 })
@@ -273,6 +345,19 @@ struct ResidentServicePage {
         if (item.health_note !== '') {
           Text(item.health_note).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_BODY).margin({ top: 8 })
         }
+      }
+      if ((item.status === 'pending_confirm' || item.status === 'completed') && item.feedback !== '') {
+        Row() {
+          Text('💬').fontSize(14)
+          Text(`志愿者反馈：${item.feedback}`).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_BODY).margin({ left: 6 }).layoutWeight(1)
+        }.width('100%').margin({ top: 8 })
+      }
+      if (item.status === 'pending_confirm') {
+        // 志愿者已提交完成，由居民最终确认（可拍照留凭证），确认后志愿者才计分
+        Button('✅ 确认完成（可拍照留证）')
+          .width('100%').height(42).fontSize(14).fontColor(Color.White)
+          .backgroundColor(Theme.SUCCESS).borderRadius(Theme.RADIUS_SM).margin({ top: 12 })
+          .onClick(() => { this.confirmVisit(item) })
       }
     }
     .width('100%').padding(16).alignItems(HorizontalAlign.Start)
@@ -435,68 +520,56 @@ struct ResidentServicePage {
           this.SubscribeForm()
         }.layoutWeight(1).width('100%')
       } else {
-        Scroll() {
-          Column() {
-            // ---- 我的单次任务（居民自建、待管理员派单）----
-            Row() {
-              Column().width(4).height(18).backgroundColor(Theme.SUCCESS).borderRadius(2)
-              Text('我的单次任务').fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ left: 10 })
-            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 4, bottom: 12 })
-            if (this.singleVisits.length === 0) {
+        // ===== 三 Tab 分区：单次任务｜周期计划｜上门记录（各类内容不再混排）=====
+        Tabs({ barPosition: BarPosition.Start, index: this.curTab }) {
+          // ---- Tab 1：我的单次任务（居民自建、待管理员派单）----
+          TabContent() {
+            Scroll() {
               Column() {
-                Text('🙋').fontSize(40)
-                Text('还没有单次任务').fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
-                Text('点击右上角「＋ 单次任务」提交').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
-              }
-              .width('100%').padding({ top: 24, bottom: 24 })
-              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-              .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS).margin({ bottom: 12 })
-            } else {
-              ForEach(this.singleVisits, (item: ServiceVisitItem) => {
-                this.VisitCard(item)
-              }, (item: ServiceVisitItem) => `once-v-${item.id}-${item.status}`)
-            }
+                if (this.singleVisits.length === 0) {
+                  this.EmptyState('🙋', '还没有单次任务', '点击右上角「＋ 单次任务」提交')
+                } else {
+                  ForEach(this.singleVisits, (item: ServiceVisitItem) => {
+                    this.VisitCard(item)
+                  }, (item: ServiceVisitItem) => `once-v-${item.id}-${item.status}`)
+                }
+              }.width('90%').margin({ top: 14, bottom: 20 }).alignItems(HorizontalAlign.Start)
+            }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
+          }.tabBar(this.TabTitle(0, '单次任务', this.singleVisits.length))
 
-            Row() {
-              Column().width(4).height(18).backgroundColor(Theme.SUCCESS).borderRadius(2)
-              Text('我的服务计划').fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ left: 10 })
-            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 12, bottom: 12 })
-            if (this.subscriptions.length === 0) {
+          // ---- Tab 2：我的服务计划（周期订阅，可修改/暂停/恢复）----
+          TabContent() {
+            Scroll() {
               Column() {
-                Text('🗒️').fontSize(40)
-                Text('还没有服务计划').fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
-                Text('点击右上角「周期服务」预约上门').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
-              }
-              .width('100%').padding({ top: 24, bottom: 24 })
-              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-              .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS).margin({ bottom: 12 })
-            } else {
-              ForEach(this.subscriptions, (item: ServiceSubscriptionItem) => {
-                this.SubscriptionCard(item)
-              }, (item: ServiceSubscriptionItem) => `s-${item.id}`)
-            }
+                if (this.subscriptions.length === 0) {
+                  this.EmptyState('🗒️', '还没有服务计划', '点击右上角「周期服务」预约上门')
+                } else {
+                  ForEach(this.subscriptions, (item: ServiceSubscriptionItem) => {
+                    this.SubscriptionCard(item)
+                  }, (item: ServiceSubscriptionItem) => `s-${item.id}`)
+                }
+              }.width('90%').margin({ top: 14, bottom: 20 }).alignItems(HorizontalAlign.Start)
+            }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
+          }.tabBar(this.TabTitle(1, '周期计划', this.subscriptions.length))
 
-            Row() {
-              Column().width(4).height(18).backgroundColor(Theme.PRIMARY).borderRadius(2)
-              Text('上门记录').fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ left: 10 })
-            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 12, bottom: 12 })
-            if (this.visits.length === 0) {
+          // ---- Tab 3：上门记录（周期计划产生的工单，待确认的在这里确认）----
+          TabContent() {
+            Scroll() {
               Column() {
-                Text('🚪').fontSize(40)
-                Text('暂无上门记录').fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
-                Text('志愿者上门服务后会显示在这里').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
-              }
-              .width('100%').padding({ top: 24, bottom: 24 })
-              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-              .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
-            } else {
-              ForEach(this.visits, (item: ServiceVisitItem) => {
-                this.VisitCard(item)
-              }, (item: ServiceVisitItem) => `v-${item.id}-${item.status}`)
-            }
-          }
-          .width('90%').margin({ top: 16, bottom: 20 }).alignItems(HorizontalAlign.Start)
-        }.layoutWeight(1).width('100%')
+                if (this.visits.length === 0) {
+                  this.EmptyState('🚪', '暂无上门记录', '志愿者上门服务后会显示在这里')
+                } else {
+                  ForEach(this.visits, (item: ServiceVisitItem) => {
+                    this.VisitCard(item)
+                  }, (item: ServiceVisitItem) => `v-${item.id}-${item.status}`)
+                }
+              }.width('90%').margin({ top: 14, bottom: 20 }).alignItems(HorizontalAlign.Start)
+            }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
+          }.tabBar(this.TabTitle(2, '上门记录', this.visits.length))
+        }
+        .layoutWeight(1).width('100%')
+        .barMode(BarMode.Fixed).barHeight(46)
+        .onChange((i: number) => { this.curTab = i })
       }
     }
     .width('100%').height('100%').backgroundColor(Theme.BG)

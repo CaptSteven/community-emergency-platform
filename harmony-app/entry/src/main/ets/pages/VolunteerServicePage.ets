@@ -21,6 +21,7 @@ interface RouteNaviParams {
 struct VolunteerServicePage {
   @State visits: ServiceVisitItem[] = []
   @State loading: boolean = false
+  @State curTab: number = 0   // 0=待办（排班/进行中/待确认） 1=历史（完成/取消/错过）
   // 我的积分与时长统计
   @State stats: MyStats | null = null
   // 完成表单
@@ -67,6 +68,18 @@ struct VolunteerServicePage {
   hoursText(minutes: number): string {
     let h: number = minutes / 60
     return (Math.round(h * 10) / 10).toString()
+  }
+
+  // 待办：已排班 / 服务中 / 待居民确认
+  todoList(): ServiceVisitItem[] {
+    return this.visits.filter((v: ServiceVisitItem) =>
+      v.status === 'assigned' || v.status === 'processing' || v.status === 'pending_confirm')
+  }
+
+  // 历史：已完成 / 已取消 / 已错过
+  doneList(): ServiceVisitItem[] {
+    return this.visits.filter((v: ServiceVisitItem) =>
+      v.status === 'completed' || v.status === 'cancelled' || v.status === 'missed')
   }
 
   async openBaiduNav(item: ServiceVisitItem) {
@@ -140,7 +153,7 @@ struct VolunteerServicePage {
     }
     try {
       await Api.post<CompleteVisitPayload>(`/service-visits/${this.activeVisit.id}/complete/`, payload)
-      promptAction.showToast({ message: '服务已完成' })
+      promptAction.showToast({ message: '已提交完成，等待居民确认', duration: 3000 })
       this.showComplete = false
       this.activeVisit = null
       this.loadVisits()
@@ -201,6 +214,31 @@ struct VolunteerServicePage {
       Text(label).fontSize(12).fontColor('#DBEAFE').margin({ top: 4 })
     }
     .layoutWeight(1).alignItems(HorizontalAlign.Center)
+  }
+
+  // 自定义 Tab 标签：选中高亮 + 数量提示 + 底部指示条
+  @Builder
+  TabTitle(idx: number, title: string, count: number) {
+    Column() {
+      Text(count > 0 ? `${title}(${count})` : title)
+        .fontSize(15)
+        .fontWeight(this.curTab === idx ? FontWeight.Bold : FontWeight.Normal)
+        .fontColor(this.curTab === idx ? Theme.PRIMARY : Theme.TEXT_MUTED)
+      Divider().width(28).strokeWidth(3)
+        .color(this.curTab === idx ? Theme.PRIMARY : Color.Transparent)
+        .margin({ top: 6 })
+    }.justifyContent(FlexAlign.Center).height('100%')
+  }
+
+  // 空状态占位
+  @Builder
+  EmptyState(emoji: string, title: string, tip: string) {
+    Column() {
+      Text(emoji).fontSize(52).margin({ bottom: 12 })
+      Text(title).fontSize(15).fontColor(Theme.TEXT_BODY)
+      Text(tip).fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
+    }
+    .width('100%').height('100%').justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
   }
 
   // 我的积分与时长统计卡：积分大数字 + 徽章，本周/累计时长、完成单数
@@ -284,7 +322,7 @@ struct VolunteerServicePage {
         Text(item.address || '-').fontSize(12).fontColor(Theme.TEXT_MUTED).layoutWeight(1).margin({ left: 4 })
       }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 6 })
 
-      if (item.status === 'completed' && item.needs_health_record) {
+      if ((item.status === 'pending_confirm' || item.status === 'completed') && item.needs_health_record) {
         Column() {
           Row() {
             Text('❤️').fontSize(14)
@@ -320,7 +358,7 @@ struct VolunteerServicePage {
       }
 
       if (item.status === 'assigned' || item.status === 'processing') {
-        Button('完成并录入记录')
+        Button('提交完成（待居民确认）')
           .width('100%').height(40).fontSize(14).fontColor(Color.White)
           .backgroundColor(Theme.SUCCESS).borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
           .onClick(() => { this.openCompleteForm(item) })
@@ -329,6 +367,16 @@ struct VolunteerServicePage {
           .width('100%').height(36).fontSize(13).fontColor('#EF4444')
           .backgroundColor('#FEF2F2').borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
           .onClick(() => { this.applyCancel(item) })
+      }
+
+      if (item.status === 'pending_confirm') {
+        // 已提交完成，等待居民确认后结单并发放积分
+        Row() {
+          Text('⏳').fontSize(14)
+          Text('已提交完成，等待居民确认后计入积分').fontSize(13).fontColor('#8B5CF6').margin({ left: 6 })
+        }
+        .width('100%').padding(10).margin({ top: 10 })
+        .backgroundColor('#EDE9FE').borderRadius(Theme.RADIUS_SM)
       }
     }
     .width('100%').padding(16).alignItems(HorizontalAlign.Start)
@@ -411,22 +459,38 @@ struct VolunteerServicePage {
           this.CompleteForm()
         }.layoutWeight(1).width('100%')
       } else {
-        // 统计卡固定在头部下方，任务列表滚动
+        // 统计卡固定在头部下方，下方分「待办｜历史」两个 Tab（不再混排）
         this.StatsCard()
-        if (this.visits.length === 0) {
-          Column() {
-            Text('🗓️').fontSize(52).margin({ bottom: 12 })
-            Text('暂无上门服务任务').fontSize(15).fontColor(Theme.TEXT_BODY)
-            Text('系统会按你的技能自动排班').fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
-          }
-          .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-        } else {
-          List() {
-            ForEach(this.visits, (item: ServiceVisitItem) => {
-              ListItem() { this.VisitCard(item) }
-            }, (item: ServiceVisitItem) => `${item.id}-${item.status}`)
-          }.layoutWeight(1).width('100%').padding({ left: 16, right: 16, top: 16 }).scrollBar(BarState.Off)
+        Tabs({ barPosition: BarPosition.Start, index: this.curTab }) {
+          // ---- Tab 1：待办（已排班/服务中/待居民确认）----
+          TabContent() {
+            if (this.todoList().length === 0) {
+              this.EmptyState('🗓️', '暂无待办服务', '系统会按你的技能自动排班')
+            } else {
+              List() {
+                ForEach(this.todoList(), (item: ServiceVisitItem) => {
+                  ListItem() { this.VisitCard(item) }
+                }, (item: ServiceVisitItem) => `todo-${item.id}-${item.status}`)
+              }.width('100%').height('100%').padding({ left: 16, right: 16, top: 14 }).scrollBar(BarState.Off)
+            }
+          }.tabBar(this.TabTitle(0, '待办', this.todoList().length))
+
+          // ---- Tab 2：历史（已完成/已取消/已错过）----
+          TabContent() {
+            if (this.doneList().length === 0) {
+              this.EmptyState('📜', '暂无服务历史', '完成的服务会显示在这里')
+            } else {
+              List() {
+                ForEach(this.doneList(), (item: ServiceVisitItem) => {
+                  ListItem() { this.VisitCard(item) }
+                }, (item: ServiceVisitItem) => `done-${item.id}-${item.status}`)
+              }.width('100%').height('100%').padding({ left: 16, right: 16, top: 14 }).scrollBar(BarState.Off)
+            }
+          }.tabBar(this.TabTitle(1, '历史', this.doneList().length))
         }
+        .layoutWeight(1).width('100%').margin({ top: 6 })
+        .barMode(BarMode.Fixed).barHeight(46)
+        .onChange((i: number) => { this.curTab = i })
       }
     }
     .width('100%').height('100%').backgroundColor(Theme.BG)

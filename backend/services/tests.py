@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from users.models import UserProfile
@@ -115,8 +116,9 @@ class SchedulerRotationTests(APITestCase):
     def test_generate_due_visits_assigns(self):
         ServiceSubscription.objects.create(
             resident=self.resident, service_type=self.stype, frequency='weekly', is_active=True)
-        created = scheduler.generate_due_visits(today=date.today())
+        created, skipped = scheduler.generate_due_visits(today=date.today())
         self.assertEqual(len(created), 1)
+        self.assertEqual(len(skipped), 0)
         self.assertIsNotNone(created[0].volunteer)          # 已自动派单
         self.assertEqual(created[0].status, 'assigned')
 
@@ -124,7 +126,7 @@ class SchedulerRotationTests(APITestCase):
         ServiceSubscription.objects.create(
             resident=self.resident, service_type=self.stype, frequency='weekly', is_active=True)
         scheduler.generate_due_visits(today=date.today())
-        again = scheduler.generate_due_visits(today=date.today())
+        again, _ = scheduler.generate_due_visits(today=date.today())
         self.assertEqual(len(again), 0)                     # 未到周期不重复生成
 
     def test_due_after_period(self):
@@ -133,18 +135,22 @@ class SchedulerRotationTests(APITestCase):
         scheduler.generate_due_visits(today=date.today() - timedelta(days=7))
         # 关掉上一张开口工单，模拟已完成
         ServiceVisit.objects.filter(subscription=sub).update(status='completed')
-        again = scheduler.generate_due_visits(today=date.today())
+        again, _ = scheduler.generate_due_visits(today=date.today())
         self.assertEqual(len(again), 1)
 
-    def test_no_eligible_volunteer_notifies_admin(self):
-        admin = make_user('rot_admin', 'admin', community=COMMUNITY)
+    def test_no_eligible_volunteer_skips_without_empty_visit(self):
+        # 无合格志愿者 + 未编排循环组：不生成「无人接」的空工单，改为跳过并汇报
         no_skill_type = ServiceType.objects.create(name='稀有服务', code='rare', required_skill='稀有技能')
-        ServiceSubscription.objects.create(
+        sub = ServiceSubscription.objects.create(
             resident=self.resident, service_type=no_skill_type, frequency='weekly', is_active=True)
-        created = scheduler.generate_due_visits(today=date.today())
-        self.assertEqual(len(created), 1)
-        self.assertIsNone(created[0].volunteer)             # 无人可派
-        self.assertTrue(admin.notifications.filter(category='service').exists())
+        created, skipped = scheduler.generate_due_visits(today=date.today())
+        self.assertEqual(len(created), 0)                   # 未生成工单
+        self.assertEqual(len(skipped), 1)                   # 记入跳过
+        self.assertEqual(skipped[0]['subscription'], sub.id)
+        self.assertFalse(ServiceVisit.objects.filter(subscription=sub).exists())
+        # 未推进 last_generated_date，下次仍会尝试
+        sub.refresh_from_db()
+        self.assertIsNone(sub.last_generated_date)
 
 
 class VisitLifecycleTests(APITestCase):
@@ -163,7 +169,7 @@ class VisitLifecycleTests(APITestCase):
             service_type=self.stype, resident=self.resident,
             volunteer=volunteer or self.vol, scheduled_date=date.today(), status=status)
 
-    def test_start_and_complete_with_health_record(self):
+    def test_start_complete_then_resident_confirm(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
         r1 = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
@@ -171,17 +177,77 @@ class VisitLifecycleTests(APITestCase):
         visit.refresh_from_db()
         self.assertEqual(visit.status, 'processing')
 
+        # 志愿者提交完成 -> 待居民确认；此时不计分、不算最终完成
         r2 = self.client.post('/api/service-visits/%d/complete/' % visit.id, {
             'systolic': 128, 'diastolic': 82, 'heart_rate': 74, 'temperature': 36.6,
             'health_note': '血压略高，建议清淡饮食', 'feedback': '老人状态良好',
         }, format='json')
         self.assertEqual(r2.status_code, 200)
         visit.refresh_from_db()
-        self.assertEqual(visit.status, 'completed')
+        self.assertEqual(visit.status, 'pending_confirm')
         self.assertEqual(visit.systolic, 128)
         self.assertEqual(float(visit.temperature), 36.6)
         self.assertIsNotNone(visit.completed_at)
+        self.vol.profile.refresh_from_db()
+        self.assertEqual(self.vol.profile.points or 0, 0)   # 未确认前不计分
+        # 通知落到居民（请确认）
         self.assertTrue(self.resident.notifications.filter(category='service').exists())
+
+        # 居民确认 -> 真正完成 + 给志愿者计分 + 通知志愿者
+        self.client.force_authenticate(self.resident)
+        r3 = self.client.post('/api/service-visits/%d/confirm/' % visit.id, {}, format='json')
+        self.assertEqual(r3.status_code, 200)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'completed')
+        self.assertIsNotNone(visit.confirmed_at)
+        self.vol.profile.refresh_from_db()
+        self.assertGreater(self.vol.profile.points or 0, 0)
+        self.assertEqual(r3.data['earned_points'], self.vol.profile.points)
+        self.assertTrue(self.vol.notifications.filter(category='service').exists())
+
+    def test_confirm_rejected_for_non_owner_resident(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                         {'feedback': 'ok'}, format='json')
+        # 另一位居民不能确认别人的工单（get_queryset 收敛 -> 404）
+        other_res = make_user('vl_res_x', 'resident', community=COMMUNITY)
+        self.client.force_authenticate(other_res)
+        resp = self.client.post('/api/service-visits/%d/confirm/' % visit.id, {}, format='json')
+        self.assertIn(resp.status_code, (403, 404))
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'pending_confirm')   # 状态未变
+
+    def test_volunteer_cannot_confirm_own_visit(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                         {'feedback': 'ok'}, format='json')
+        resp = self.client.post('/api/service-visits/%d/confirm/' % visit.id, {}, format='json')
+        self.assertIn(resp.status_code, (403, 404))
+
+    def test_auto_confirm_stale_finalizes_and_scores(self):
+        visit = self._visit(status='pending_confirm')
+        visit.duration_minutes = 60
+        # 完成提交时间设为 8 天前
+        visit.completed_at = timezone.now() - timedelta(days=8)
+        visit.save(update_fields=['duration_minutes', 'completed_at'])
+        count = scheduler.auto_confirm_stale(days=7)
+        self.assertEqual(count, 1)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'completed')
+        self.assertIsNotNone(visit.confirmed_at)
+        self.vol.profile.refresh_from_db()
+        self.assertGreater(self.vol.profile.points or 0, 0)
+
+    def test_auto_confirm_skips_recent(self):
+        visit = self._visit(status='pending_confirm')
+        visit.completed_at = timezone.now() - timedelta(days=2)   # 未超期
+        visit.save(update_fields=['completed_at'])
+        self.assertEqual(scheduler.auto_confirm_stale(days=7), 0)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'pending_confirm')
 
     def test_cannot_start_others_visit(self):
         visit = self._visit(volunteer=self.vol)
@@ -576,19 +642,27 @@ class SingleTaskAndPointsTests(APITestCase):
         rows = single.data if isinstance(single.data, list) else single.data.get('results', [])
         self.assertTrue(all(r['subscription'] is None for r in rows))
 
-    # #6 积分 + 时长
-    def test_complete_awards_points_and_duration(self):
+    # #6 积分 + 时长（积分在居民确认后发放）
+    def test_confirm_awards_points_and_duration(self):
         visit = ServiceVisit.objects.create(service_type=self.stype, resident=self.resident,
                                             volunteer=self.vol1, scheduled_date=date.today(), status='assigned')
         self.client.force_authenticate(self.vol1)
         self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
         resp = self.client.post('/api/service-visits/%d/complete/' % visit.id, {'feedback': 'ok'}, format='json')
         self.assertEqual(resp.status_code, 200)
-        self.assertGreaterEqual(resp.data['earned_points'], 10)
-        self.vol1.refresh_from_db()
-        self.assertGreaterEqual(self.vol1.profile.points, 10)
         visit.refresh_from_db()
+        self.assertEqual(visit.status, 'pending_confirm')
         self.assertIsNotNone(visit.duration_minutes)
+        self.vol1.profile.refresh_from_db()
+        self.assertEqual(self.vol1.profile.points or 0, 0)   # 确认前不计分
+
+        # 居民确认后才计分
+        self.client.force_authenticate(self.resident)
+        cresp = self.client.post('/api/service-visits/%d/confirm/' % visit.id, {}, format='json')
+        self.assertEqual(cresp.status_code, 200)
+        self.assertGreaterEqual(cresp.data['earned_points'], 10)
+        self.vol1.profile.refresh_from_db()
+        self.assertGreaterEqual(self.vol1.profile.points, 10)
 
     def test_my_stats(self):
         self.client.force_authenticate(self.vol1)
@@ -630,6 +704,8 @@ class ServiceModeAndDailyTests(APITestCase):
     def setUp(self):
         self.admin = make_user('mode_admin', 'admin', community=COMMUNITY)
         self.resident = make_user('mode_res', 'resident', community=COMMUNITY)
+        # 送餐无技能门槛，配一名同社区志愿者，保证每日到期能自动派单（否则会被空工单守卫跳过）
+        self.vol = make_user('mode_v1', 'volunteer', community=COMMUNITY, skills='')
         self.t_single = ServiceType.objects.create(name='维修', code='repair_t', service_mode='single')
         self.t_recur = ServiceType.objects.create(name='送餐', code='meal_t', service_mode='recurring', default_frequency='daily')
         self.t_both = ServiceType.objects.create(name='代购', code='grocery_t', service_mode='both')
@@ -665,7 +741,7 @@ class ServiceModeAndDailyTests(APITestCase):
             resident=self.resident, service_type=self.t_recur, frequency='daily', is_active=True)
         scheduler.generate_due_visits(today=date.today() - timedelta(days=1))
         ServiceVisit.objects.filter(subscription=sub).update(status='completed')
-        again = scheduler.generate_due_visits(today=date.today())
+        again, _ = scheduler.generate_due_visits(today=date.today())
         self.assertEqual(len(again), 1)   # 每日：隔天即到期
 
 
