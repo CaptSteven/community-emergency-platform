@@ -153,32 +153,13 @@ struct ResidentServicePage {
     }
   }
 
-  // 居民确认服务完成：可选拍照留凭证；确认后志愿者才计分
-  async confirmVisit(item: ServiceVisitItem) {
-    let withPhoto: boolean = false
+  // 实际提交确认：photoUri 非空则拷到缓存随 multipart 一并上传凭证照
+  async doConfirm(item: ServiceVisitItem, photoUri: string) {
     try {
-      let res = await promptAction.showActionMenu({
-        title: '确认志愿者已完成本次服务？',
-        buttons: [
-          { text: '📷 选择照片并确认', color: '#2563EB' },
-          { text: '直接确认完成', color: '#16A34A' }
-        ]
-      })
-      withPhoto = res.index === 0
-    } catch (err) {
-      return  // 用户取消
-    }
-    try {
-      if (withPhoto) {
-        // 选一张凭证照 → 拷到缓存 → 随 confirm 一并 multipart 上传
-        let photoPicker = new picker.PhotoViewPicker()
-        let sel = await photoPicker.select({ MIMEType: picker.PhotoViewMIMETypes.IMAGE_TYPE, maxSelectNumber: 1 })
-        if (!sel.photoUris || sel.photoUris.length === 0) {
-          return
-        }
+      if (photoUri !== '') {
         let ctx = getContext(this) as common.UIAbilityContext
         let name: string = 'confirm_' + item.id + '.jpg'
-        let src = fs.openSync(sel.photoUris[0], fs.OpenMode.READ_ONLY)
+        let src = fs.openSync(photoUri, fs.OpenMode.READ_ONLY)
         let dst = fs.openSync(ctx.cacheDir + '/' + name, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
         fs.copyFileSync(src.fd, dst.fd)
         fs.closeSync(src)
@@ -192,6 +173,60 @@ struct ResidentServicePage {
     } catch (err) {
       promptAction.showToast({ message: '确认失败：' + (err as Error).message })
     }
+  }
+
+  // 居民确认服务完成：直接确认为首选；拍照留证可选，选不到照片时回退询问，绝不静默失败
+  async confirmVisit(item: ServiceVisitItem) {
+    let choice: number = -1
+    try {
+      let res = await promptAction.showActionMenu({
+        title: '确认志愿者已完成本次服务？',
+        buttons: [
+          { text: '✅ 直接确认完成', color: '#16A34A' },
+          { text: '📷 选择照片留证并确认', color: '#2563EB' }
+        ]
+      })
+      choice = res.index
+    } catch (err) {
+      return  // 用户取消
+    }
+    if (choice === 0) {
+      await this.doConfirm(item, '')
+      return
+    }
+    if (choice !== 1) {
+      return
+    }
+    // 选凭证照；相册为空/取消选择时给出回退选项而不是无声无息
+    let picked: string = ''
+    try {
+      let photoPicker = new picker.PhotoViewPicker()
+      let sel = await photoPicker.select({ MIMEType: picker.PhotoViewMIMETypes.IMAGE_TYPE, maxSelectNumber: 1 })
+      if (sel.photoUris && sel.photoUris.length > 0) {
+        picked = sel.photoUris[0]
+      }
+    } catch (err) {
+      // 选择器异常按未选处理，走下方回退
+    }
+    if (picked === '') {
+      try {
+        let r = await promptAction.showDialog({
+          title: '未选择照片',
+          message: '没有选到照片（相册可能为空）。是否不留照片、直接确认完成？',
+          buttons: [
+            { text: '再想想', color: '#64748B' },
+            { text: '直接确认完成', color: '#16A34A' }
+          ]
+        })
+        if (r.index === 1) {
+          await this.doConfirm(item, '')
+        }
+      } catch (err) {
+        // 关闭弹窗即放弃本次确认
+      }
+      return
+    }
+    await this.doConfirm(item, picked)
   }
 
   async submitSubscribe() {
