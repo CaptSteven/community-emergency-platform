@@ -1,16 +1,23 @@
 import router from '@ohos.router'
 import promptAction from '@ohos.promptAction'
 import { Api, Session } from '../common/Api'
-import { ServiceTypeItem, ServiceSubscriptionItem, ServiceVisitItem, CreateSubscriptionPayload } from '../model/Models'
+import { ServiceTypeItem, ServiceSubscriptionItem, ServiceVisitItem, CreateSubscriptionPayload, RequestOncePayload } from '../model/Models'
 import { Theme } from '../common/Theme'
 
 @Entry
 @Component
 struct ResidentServicePage {
   @State subscriptions: ServiceSubscriptionItem[] = []
-  @State visits: ServiceVisitItem[] = []
+  @State visits: ServiceVisitItem[] = []            // 周期计划产生的上门记录（kind=recurring）
+  @State singleVisits: ServiceVisitItem[] = []      // 我的单次任务（kind=single）
   @State types: ServiceTypeItem[] = []
   @State loading: boolean = false
+  // 提交单次任务表单
+  @State showOnce: boolean = false
+  @State onceTypeId: number = 0
+  @State onceAddress: string = ''
+  @State onceNote: string = ''
+  @State onceDate: string = ''
   // 申请周期服务表单
   @State showSubscribe: boolean = false
   @State selectedTypeId: number = 0
@@ -39,7 +46,9 @@ struct ResidentServicePage {
     this.loading = true
     try {
       this.subscriptions = await Api.getList<ServiceSubscriptionItem>('/service-subscriptions/')
-      this.visits = await Api.getList<ServiceVisitItem>('/service-visits/')
+      // 单次任务与周期上门分开展示：single=居民自建单次；recurring=周期计划产生
+      this.singleVisits = await Api.getList<ServiceVisitItem>('/service-visits/?kind=single')
+      this.visits = await Api.getList<ServiceVisitItem>('/service-visits/?kind=recurring')
     } catch (err) {
       promptAction.showToast({ message: '加载失败，请检查后端服务' })
     } finally {
@@ -70,6 +79,45 @@ struct ResidentServicePage {
       this.selectedTypeId = this.types[0].id
     }
     this.showSubscribe = true
+  }
+
+  // 打开「单次任务」表单
+  openOnce() {
+    this.onceNote = ''
+    this.onceAddress = this.serviceAddress === '' ? Session.address : this.serviceAddress
+    this.onceDate = ''
+    if (this.types.length > 0) {
+      this.onceTypeId = this.types[0].id
+    }
+    this.showOnce = true
+  }
+
+  // 提交单次任务：无订阅、待管理员派单
+  async submitOnce() {
+    if (this.onceTypeId === 0) {
+      promptAction.showToast({ message: '请选择服务类型' })
+      return
+    }
+    if (this.onceAddress.trim() === '') {
+      promptAction.showToast({ message: '请填写上门地址' })
+      return
+    }
+    let payload: RequestOncePayload = {
+      service_type: this.onceTypeId,
+      address: this.onceAddress,
+      note: this.onceNote
+    }
+    if (this.onceDate.trim() !== '') {
+      payload.scheduled_date = this.onceDate.trim()
+    }
+    try {
+      await Api.post<RequestOncePayload>('/service-visits/request-once/', payload)
+      promptAction.showToast({ message: '已提交，等待管理员安排' })
+      this.showOnce = false
+      this.loadAll()
+    } catch (err) {
+      promptAction.showToast({ message: '提交失败：' + (err as Error).message })
+    }
   }
 
   // 修改已有服务计划：预填后进入表单
@@ -199,6 +247,12 @@ struct ResidentServicePage {
           Text(`志愿者：${item.volunteer_name}`).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED)
         }
       }.width('100%').margin({ top: 10 })
+      if (item.note !== '') {
+        Row() {
+          Text('📝').fontSize(14)
+          Text(item.note).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_BODY).margin({ left: 6 }).layoutWeight(1)
+        }.width('100%').margin({ top: 8 })
+      }
       if (item.status === 'completed' && item.needs_health_record) {
         // 健康记录：分隔 + 徽章展示，更醒目易读
         Row() {
@@ -222,6 +276,54 @@ struct ResidentServicePage {
     .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
     .shadow({ radius: 16, color: '#0F0F172A', offsetX: 0, offsetY: 4 })
     .margin({ bottom: 12 })
+  }
+
+  @Builder
+  OnceForm() {
+    Column() {
+      Text('提交单次任务').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ bottom: 4 })
+      Text('仅本次上门，提交后由管理员安排志愿者').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ bottom: 14 })
+
+      Text('服务类型').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ bottom: 8 })
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(this.types, (t: ServiceTypeItem) => {
+          Text(`${t.icon} ${t.name}`)
+            .fontSize(13).fontColor(this.onceTypeId === t.id ? Color.White : Theme.TEXT_BODY)
+            .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
+            .backgroundColor(this.onceTypeId === t.id ? Theme.SUCCESS : '#F0FDF4').borderRadius(16)
+            .onClick(() => { this.onceTypeId = t.id })
+        }, (t: ServiceTypeItem) => `once-${t.id}`)
+      }.width('100%').margin({ bottom: 6 })
+
+      Text('上门地址').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ top: 8, bottom: 8 })
+      TextInput({ placeholder: '如 水磨沟区XX路X号楼X单元', text: this.onceAddress })
+        .width('100%').margin({ bottom: 12 })
+        .onChange((v: string) => { this.onceAddress = v })
+
+      Text('需求说明').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ bottom: 8 })
+      TextArea({ placeholder: '请描述本次需要帮助的具体情况', text: this.onceNote })
+        .height(80).width('100%').margin({ bottom: 12 })
+        .onChange((v: string) => { this.onceNote = v })
+
+      Text('期望日期（选填）').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ bottom: 8 })
+      TextInput({ placeholder: '如 2026-07-10；留空由管理员安排', text: this.onceDate })
+        .width('100%').margin({ bottom: 16 })
+        .onChange((v: string) => { this.onceDate = v })
+
+      Row() {
+        Button('取消')
+          .layoutWeight(1).height(44).fontSize(15).fontColor(Theme.TEXT_BODY)
+          .backgroundColor('#E5E7EB').borderRadius(Theme.RADIUS_SM)
+          .onClick(() => { this.showOnce = false })
+        Button('提交任务')
+          .layoutWeight(1).height(44).fontSize(15).fontColor(Color.White)
+          .backgroundColor(Theme.SUCCESS).borderRadius(Theme.RADIUS_SM).margin({ left: 12 })
+          .onClick(() => { this.submitOnce() })
+      }.width('100%')
+    }
+    .width('90%').padding(18).margin({ top: 16, bottom: 16 }).alignItems(HorizontalAlign.Start)
+    .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
+    .shadow({ radius: 16, color: '#14000000', offsetX: 0, offsetY: 4 })
   }
 
   @Builder
@@ -304,10 +406,16 @@ struct ResidentServicePage {
           Text(`${Session.username} · ${Session.community || '社区居民'}`).fontSize(12).fontColor('#DBEAFE').margin({ top: 4 })
         }.layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 12 })
 
-        Button('申请服务')
-          .height(36).fontSize(13).fontColor(Theme.PRIMARY).backgroundColor(Color.White)
-          .borderRadius(Theme.RADIUS_SM)
-          .onClick(() => { this.openSubscribe() })
+        Column() {
+          Button('＋ 单次任务')
+            .height(32).fontSize(12).fontColor(Theme.SUCCESS).backgroundColor(Color.White)
+            .borderRadius(Theme.RADIUS_SM).padding({ left: 10, right: 10 })
+            .onClick(() => { this.openOnce() })
+          Button('周期服务')
+            .height(32).fontSize(12).fontColor(Theme.PRIMARY).backgroundColor('#DBEAFE')
+            .borderRadius(Theme.RADIUS_SM).padding({ left: 10, right: 10 }).margin({ top: 6 })
+            .onClick(() => { this.openSubscribe() })
+        }.alignItems(HorizontalAlign.End)
       }
       .width('100%').padding({ left: 16, right: 16, top: 22, bottom: 24 }).alignItems(VerticalAlign.Center)
       .linearGradient({
@@ -315,22 +423,46 @@ struct ResidentServicePage {
         colors: [[Theme.PRIMARY_LIGHT, 0.0], [Theme.PRIMARY, 0.55], [Theme.PRIMARY_DARK, 1.0]]
       }).borderRadius({ bottomLeft: 28, bottomRight: 28 })
 
-      if (this.showSubscribe) {
+      if (this.showOnce) {
+        Scroll() {
+          this.OnceForm()
+        }.layoutWeight(1).width('100%')
+      } else if (this.showSubscribe) {
         Scroll() {
           this.SubscribeForm()
         }.layoutWeight(1).width('100%')
       } else {
         Scroll() {
           Column() {
+            // ---- 我的单次任务（居民自建、待管理员派单）----
+            Row() {
+              Column().width(4).height(18).backgroundColor(Theme.SUCCESS).borderRadius(2)
+              Text('我的单次任务').fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ left: 10 })
+            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 4, bottom: 12 })
+            if (this.singleVisits.length === 0) {
+              Column() {
+                Text('🙋').fontSize(40)
+                Text('还没有单次任务').fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
+                Text('点击右上角「＋ 单次任务」提交').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
+              }
+              .width('100%').padding({ top: 24, bottom: 24 })
+              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+              .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS).margin({ bottom: 12 })
+            } else {
+              ForEach(this.singleVisits, (item: ServiceVisitItem) => {
+                this.VisitCard(item)
+              }, (item: ServiceVisitItem) => `once-v-${item.id}-${item.status}`)
+            }
+
             Row() {
               Column().width(4).height(18).backgroundColor(Theme.SUCCESS).borderRadius(2)
               Text('我的服务计划').fontSize(Theme.FS_SUBTITLE).fontWeight(FontWeight.Bold).fontColor(Theme.TEXT).margin({ left: 10 })
-            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 4, bottom: 12 })
+            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 12, bottom: 12 })
             if (this.subscriptions.length === 0) {
               Column() {
                 Text('🗒️').fontSize(40)
                 Text('还没有服务计划').fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ top: 10 })
-                Text('点击右上角「申请服务」预约上门').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
+                Text('点击右上角「周期服务」预约上门').fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
               }
               .width('100%').padding({ top: 24, bottom: 24 })
               .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)

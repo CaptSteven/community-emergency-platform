@@ -195,6 +195,8 @@ export interface ServiceVisitItem {
   address: string
   latitude: number | null
   longitude: number | null
+  note: string             // 需求说明（居民提交单次任务时填写）
+  duration_minutes: number // 本次服务时长（分钟）
   feedback: string
   completion_photo: string | null
   systolic: number | null
@@ -228,6 +230,22 @@ export interface CompleteVisitPayload {
 export interface CancelVisitPayload {
   reason: string
   note: string
+}
+
+// 居民提交单次任务载荷（无订阅、待管理员派单）
+export interface RequestOncePayload {
+  service_type: number
+  address: string
+  note: string
+  scheduled_date?: string   // 可选期望日期（YYYY-MM-DD）
+}
+
+// 志愿者本人服务统计（积分与时长）
+export interface MyStats {
+  points: number
+  total_minutes: number
+  week_minutes: number
+  completed_count: number
 }
 
 // 居民申请周期服务载荷

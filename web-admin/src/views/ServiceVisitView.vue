@@ -8,6 +8,20 @@
       <el-button type="success" :loading="generating" @click="generateVisits">生成本周排班</el-button>
     </div>
 
+    <!-- 周期 / 单次 任务切换 -->
+    <div class="kind-switch">
+      <el-radio-group v-model="filters.kind" @change="handleKindChange">
+        <el-radio-button label="">全部</el-radio-button>
+        <el-radio-button label="recurring">周期任务</el-radio-button>
+        <el-radio-button label="single">单次任务</el-radio-button>
+      </el-radio-group>
+      <!-- 单次任务派单引导 -->
+      <div v-if="filters.kind === 'single'" class="kind-tip">
+        <span class="kind-tip-icon">🗺️</span>
+        单次任务可在「单次任务地图」拖拽派单
+      </div>
+    </div>
+
     <div class="card filter-card">
       <el-form :inline="true">
         <el-form-item label="状态">
@@ -70,6 +84,20 @@
             <el-tag :type="statusType(row.status)" effect="dark">{{ row.status_display }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="来源" width="96" align="center">
+          <template #default="{ row }">
+            <!-- 有 subscription = 周期计划产生；无 = 居民单次请求 -->
+            <el-tag v-if="row.subscription" type="success" effect="plain" size="small" round>周期</el-tag>
+            <el-tag v-else type="primary" effect="plain" size="small" round>单次</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="时长" width="90" align="center">
+          <template #default="{ row }">
+            <!-- 时长仅在完成后有值 -->
+            <span v-if="row.status === 'completed' && row.duration_minutes" class="duration">{{ row.duration_minutes }} 分钟</span>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="健康记录" min-width="150">
           <template #default="{ row }">
             <span v-if="row.systolic || row.temperature">
@@ -128,11 +156,17 @@
       <el-descriptions v-if="current" :column="1" border>
         <el-descriptions-item label="受益居民">{{ current.resident_name }}</el-descriptions-item>
         <el-descriptions-item label="服务类型">{{ current.service_type_icon }} {{ current.service_type_name }}</el-descriptions-item>
+        <el-descriptions-item label="来源">
+          <el-tag v-if="current.subscription" type="success" effect="plain" size="small" round>周期计划</el-tag>
+          <el-tag v-else type="primary" effect="plain" size="small" round>单次任务</el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="志愿者">{{ current.volunteer_name || '待派单' }}</el-descriptions-item>
         <el-descriptions-item label="计划日期">{{ current.scheduled_date }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="statusType(current.status)" effect="dark" size="small">{{ current.status_display }}</el-tag>
         </el-descriptions-item>
+        <el-descriptions-item v-if="current.status === 'completed' && current.duration_minutes" label="服务时长">{{ current.duration_minutes }} 分钟</el-descriptions-item>
+        <el-descriptions-item label="需求说明">{{ current.note || '—' }}</el-descriptions-item>
         <el-descriptions-item label="服务地址">{{ current.address || '—' }}</el-descriptions-item>
         <el-descriptions-item v-if="current.needs_health_record" label="血压">{{ current.systolic || '—' }}/{{ current.diastolic || '—' }} mmHg</el-descriptions-item>
         <el-descriptions-item v-if="current.needs_health_record" label="心率">{{ current.heart_rate || '—' }} 次/分</el-descriptions-item>
@@ -187,7 +221,8 @@ const reassignVisible = ref(false)
 const detailVisible = ref(false)
 const reassignVolunteer = ref(null)
 
-const filters = reactive({ status: '', serviceType: '', date: '' })
+// kind: '' 全部 / 'recurring' 周期任务 / 'single' 单次任务
+const filters = reactive({ kind: '', status: '', serviceType: '', date: '' })
 
 // 分页（兼容后端返回数组或 {count,results}）
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
@@ -205,6 +240,7 @@ const loadData = async () => {
   loading.value = true
   try {
     const params = { ...buildPageParams(pagination) }
+    if (filters.kind) params.kind = filters.kind
     if (filters.status) params.status = filters.status
     if (filters.serviceType) params.service_type = filters.serviceType
     if (filters.date) params.scheduled_date = filters.date
@@ -218,6 +254,7 @@ const loadData = async () => {
 const handleSizeChange = size => { pagination.pageSize = size; pagination.page = 1; loadData() }
 const handlePageChange = page => { pagination.page = page; loadData() }
 const handleFilter = () => { pagination.page = 1; loadData() }
+const handleKindChange = () => { pagination.page = 1; loadData() }
 
 const loadRefs = async () => {
   try {
@@ -233,7 +270,7 @@ const loadRefs = async () => {
 const resetFilters = () => {
   filters.status = ''; filters.serviceType = ''; filters.date = ''
   pagination.page = 1
-  loadData()
+  loadData()  // 保留当前「周期/单次」切换，仅重置筛选条件
 }
 
 const openReassign = row => {
@@ -278,6 +315,21 @@ onMounted(() => { loadData(); loadRefs() })
 }
 .svc-name { font-size: 15px; font-weight: 600; color: #1e293b; }
 .muted { color: #94a3b8; }
+.duration { font-weight: 600; color: #16a34a; }
+
+/* 周期/单次 切换 */
+.kind-switch {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
+  margin-bottom: 16px;
+}
+.kind-tip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 12px;
+  background: #eff6ff; color: #2563EB;
+  font-size: 13px; font-weight: 500;
+  border: 1px solid rgba(37, 99, 235, .16);
+}
+.kind-tip-icon { font-size: 15px; }
 
 /* 本页状态小结 */
 .stat-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }

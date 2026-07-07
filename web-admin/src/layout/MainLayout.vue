@@ -39,6 +39,16 @@
             <el-icon><List /></el-icon>
             <span>服务目录管理</span>
           </el-menu-item>
+          <!-- 🗺️ 单次任务地图：一图拖拽派单 -->
+          <el-menu-item index="/single-tasks" class="svc-item">
+            <el-icon><Location /></el-icon>
+            <span>单次任务地图</span>
+          </el-menu-item>
+          <!-- 🏅 志愿积分排行榜 -->
+          <el-menu-item index="/leaderboard" class="svc-item">
+            <el-icon><Trophy /></el-icon>
+            <span>志愿排行榜</span>
+          </el-menu-item>
         </el-menu-item-group>
 
         <el-menu-item-group title="系统">
@@ -89,7 +99,7 @@
 import { onBeforeUnmount, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { DataLine, Calendar, Tickets, List, User, Bell, Location } from '@element-plus/icons-vue'
+import { DataLine, Calendar, Tickets, List, User, Bell, Location, Trophy } from '@element-plus/icons-vue'
 import { authState, clearAuth, initAuthFromStorage, loadUnreadCount } from '../stores/auth'
 
 const router = useRouter()
@@ -101,6 +111,8 @@ const ROUTE_NAMES = {
   '/service-subscriptions': '服务计划管理',
   '/service-visits': '排班工单看板',
   '/service-types': '服务目录管理',
+  '/single-tasks': '单次任务地图',
+  '/leaderboard': '志愿排行榜',
   '/users': '用户管理',
   '/notifications': '站内消息管理'
 }

@@ -26,10 +26,36 @@
         <el-table-column prop="preferred_weekday_display" label="首选日" width="90" />
         <el-table-column prop="preferred_time" label="时段" width="90" />
         <el-table-column prop="address" label="服务地址" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="last_generated_date" label="最近排班" width="120">
+        <el-table-column prop="last_generated_date" label="最近排班" width="110">
           <template #default="{ row }">
             <span v-if="row.last_generated_date">{{ row.last_generated_date }}</span>
             <span v-else class="muted">未排班</span>
+          </template>
+        </el-table-column>
+        <!-- 循环组：多名志愿者轮流上门 -->
+        <el-table-column label="循环组（轮换）" min-width="260">
+          <template #default="{ row }">
+            <div v-if="row.rotation_group && row.rotation_group.length" class="rot-group">
+              <div class="rot-tags">
+                <!-- is_next 高亮标出下一位轮到谁 -->
+                <el-tag
+                  v-for="m in row.rotation_group"
+                  :key="m.id"
+                  :type="m.is_next ? 'warning' : 'info'"
+                  :effect="m.is_next ? 'dark' : 'plain'"
+                  size="small"
+                  round
+                  class="rot-tag"
+                >
+                  {{ m.order }}. {{ m.username }}
+                </el-tag>
+              </div>
+              <div class="rot-next">当前进行到：<b>{{ nextName(row) }}</b></div>
+            </div>
+            <div v-else class="rot-empty">
+              <span class="rot-empty-icon">🔁</span>
+              <span class="muted">未编排，将按负载自动派单</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="110" align="center">
@@ -46,9 +72,13 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain @click="generateNow(row)">立即排班</el-button>
+            <!-- 编排循环组：按技能 + 距离智能筛选 -->
+            <el-button size="small" type="success" plain :loading="row._building" @click="buildGroup(row)">
+              {{ row.rotation_group && row.rotation_group.length ? '重排循环组' : '编排循环组' }}
+            </el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
           </template>
@@ -245,6 +275,22 @@ const generateVisits = async () => {
   } catch (e) { /* 拦截器提示 */ } finally { generating.value = false }
 }
 
+// 循环组中「下一位轮到谁」的名字（is_next）
+const nextName = row => {
+  const next = (row.rotation_group || []).find(m => m.is_next)
+  return next ? next.username : '—'
+}
+
+// 编排循环组：后端按技能 + 距离智能筛选生成轮换序列
+const buildGroup = async row => {
+  row._building = true
+  try {
+    const res = await request.post(`/service-subscriptions/${row.id}/build-group/`)
+    ElMessage.success(res.message || '循环组已编排')
+    loadData()
+  } catch (e) { /* 拦截器提示 */ } finally { row._building = false }
+}
+
 const generateNow = async row => {
   try {
     const res = await request.post(`/service-subscriptions/${row.id}/generate-now/`)
@@ -269,6 +315,15 @@ onMounted(() => { loadData(); loadRefs() })
 }
 .svc-name { font-size: 15px; font-weight: 600; color: #1e293b; }
 .muted { color: #94a3b8; }
+
+/* 循环组 */
+.rot-group { display: flex; flex-direction: column; gap: 6px; }
+.rot-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.rot-tag { font-weight: 600; }
+.rot-next { font-size: 12px; color: #64748b; }
+.rot-next b { color: #F59E0B; }
+.rot-empty { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.rot-empty-icon { font-size: 15px; }
 
 /* 空状态 */
 .empty-state { padding: 28px 0; }

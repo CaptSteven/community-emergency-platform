@@ -8,6 +8,8 @@ import UserView from '../views/UserView.vue'
 import ServiceTypeView from '../views/ServiceTypeView.vue'
 import ServiceSubscriptionView from '../views/ServiceSubscriptionView.vue'
 import ServiceVisitView from '../views/ServiceVisitView.vue'
+import SingleTaskMapView from '../views/SingleTaskMapView.vue'
+import LeaderboardView from '../views/LeaderboardView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -39,6 +41,16 @@ const router = createRouter({
         {
           path: 'service-visits',
           component: ServiceVisitView
+        },
+        {
+          // 单次任务地图：一图管理待派单单次任务
+          path: 'single-tasks',
+          component: SingleTaskMapView
+        },
+        {
+          // 志愿积分排行榜
+          path: 'leaderboard',
+          component: LeaderboardView
         },
         {
           path: 'notifications',

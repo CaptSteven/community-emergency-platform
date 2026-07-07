@@ -25,13 +25,24 @@ export class Theme {
   static readonly TEAL: string = '#0D9488'
   static readonly PURPLE: string = '#7C3AED'
 
+  // 功能宫格用的辅助强调色（配合浅底做圆角小卡的图标块）
+  static readonly SKY: string = '#0EA5E9'
+  static readonly INDIGO: string = '#4F46E5'
+  static readonly ROSE: string = '#F43F5E'
+
   // 浅色底（柔和背景，用于健康记录/提示块，保证易读）
   static readonly SUCCESS_LIGHT: string = '#F0FDF4'
   static readonly PRIMARY_LIGHT_BG: string = '#EFF6FF'
   static readonly WARN_LIGHT: string = '#FFFBEB'
   static readonly DANGER_LIGHT: string = '#FEF2F2'
+  static readonly SKY_LIGHT_BG: string = '#E0F2FE'
+  static readonly INDIGO_LIGHT_BG: string = '#EEF2FF'
+  static readonly ROSE_LIGHT_BG: string = '#FFF1F2'
+  static readonly TEAL_LIGHT_BG: string = '#F0FDFA'
+  static readonly PURPLE_LIGHT_BG: string = '#F5F3FF'
 
   // 圆角 / 间距
+  static readonly RADIUS_LG: number = 22
   static readonly RADIUS: number = 18
   static readonly RADIUS_SM: number = 12
   static readonly GAP: number = 12

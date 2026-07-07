@@ -2,7 +2,7 @@ import router from '@ohos.router'
 import promptAction from '@ohos.promptAction'
 import { Api, Session } from '../common/Api'
 import { LocationService } from '../common/LocationService'
-import { ServiceVisitItem, CompleteVisitPayload, CancelVisitPayload, LocationResult } from '../model/Models'
+import { ServiceVisitItem, CompleteVisitPayload, CancelVisitPayload, LocationResult, MyStats } from '../model/Models'
 import { Theme } from '../common/Theme'
 
 // 百度路线导航参数：起点(当前定位) → 终点(服务点坐标或地址)
@@ -21,6 +21,8 @@ interface RouteNaviParams {
 struct VolunteerServicePage {
   @State visits: ServiceVisitItem[] = []
   @State loading: boolean = false
+  // 我的积分与时长统计
+  @State stats: MyStats | null = null
   // 完成表单
   @State showComplete: boolean = false
   @State activeVisit: ServiceVisitItem | null = null
@@ -33,10 +35,12 @@ struct VolunteerServicePage {
 
   onPageShow() {
     this.loadVisits()
+    this.loadStats()
   }
 
   aboutToAppear() {
     this.loadVisits()
+    this.loadStats()
   }
 
   async loadVisits() {
@@ -48,6 +52,21 @@ struct VolunteerServicePage {
     } finally {
       this.loading = false
     }
+  }
+
+  // 加载「我的积分与时长」统计
+  async loadStats() {
+    try {
+      this.stats = await Api.get('/service-visits/my-stats/') as MyStats
+    } catch (err) {
+      // 统计非核心，失败静默即可
+    }
+  }
+
+  // 分钟转「X.X 小时」，便于志愿者直观理解累计时长
+  hoursText(minutes: number): string {
+    let h: number = minutes / 60
+    return (Math.round(h * 10) / 10).toString()
   }
 
   async openBaiduNav(item: ServiceVisitItem) {
@@ -167,6 +186,59 @@ struct VolunteerServicePage {
     } catch (err) {
       promptAction.showToast({ message: '取消失败：' + (err as Error).message })
     }
+  }
+
+  // 统计小项：数值 + 单位 + 标签（用于统计卡内的三格）
+  @Builder
+  StatItem(value: string, unit: string, label: string) {
+    Column() {
+      Row() {
+        Text(value).fontSize(20).fontWeight(FontWeight.Bold).fontColor(Color.White)
+        if (unit !== '') {
+          Text(unit).fontSize(12).fontColor('#DBEAFE').margin({ left: 2, bottom: 2 })
+        }
+      }.alignItems(VerticalAlign.Bottom)
+      Text(label).fontSize(12).fontColor('#DBEAFE').margin({ top: 4 })
+    }
+    .layoutWeight(1).alignItems(HorizontalAlign.Center)
+  }
+
+  // 我的积分与时长统计卡：积分大数字 + 徽章，本周/累计时长、完成单数
+  @Builder
+  StatsCard() {
+    Column() {
+      Row() {
+        Column() {
+          Text('我的积分').fontSize(13).fontColor('#DBEAFE')
+          Row() {
+            Text(`${this.stats?.points ?? 0}`).fontSize(40).fontWeight(FontWeight.Bold).fontColor(Color.White)
+            Text('分').fontSize(15).fontColor('#DBEAFE').margin({ left: 4, bottom: 6 })
+          }.alignItems(VerticalAlign.Bottom).margin({ top: 2 })
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+
+        Text('🏅 志愿之星')
+          .fontSize(12).fontColor(Color.White)
+          .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+          .backgroundColor('#33FFFFFF').borderRadius(14)
+      }.width('100%').alignItems(VerticalAlign.Top)
+
+      Divider().color('#33FFFFFF').margin({ top: 14, bottom: 12 })
+
+      Row() {
+        this.StatItem(this.hoursText(this.stats?.week_minutes ?? 0), 'h', '本周时长')
+        Divider().vertical(true).height(34).color('#33FFFFFF')
+        this.StatItem(this.hoursText(this.stats?.total_minutes ?? 0), 'h', '累计时长')
+        Divider().vertical(true).height(34).color('#33FFFFFF')
+        this.StatItem(`${this.stats?.completed_count ?? 0}`, '', '完成单数')
+      }.width('100%')
+    }
+    .width('90%').padding(18).margin({ top: 14 }).alignItems(HorizontalAlign.Start)
+    .borderRadius(Theme.RADIUS)
+    .linearGradient({
+      angle: 135,
+      colors: [[Theme.PRIMARY_LIGHT, 0.0], [Theme.PRIMARY, 0.6], [Theme.PRIMARY_DARK, 1.0]]
+    })
+    .shadow({ radius: 16, color: '#332563EB', offsetX: 0, offsetY: 6 })
   }
 
   // 单项健康小徽章：标签 + 数值，醒目分隔
@@ -338,19 +410,23 @@ struct VolunteerServicePage {
         Scroll() {
           this.CompleteForm()
         }.layoutWeight(1).width('100%')
-      } else if (this.visits.length === 0) {
-        Column() {
-          Text('🗓️').fontSize(52).margin({ bottom: 12 })
-          Text('暂无上门服务任务').fontSize(15).fontColor(Theme.TEXT_BODY)
-          Text('系统会按你的技能自动排班').fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
-        }
-        .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
       } else {
-        List() {
-          ForEach(this.visits, (item: ServiceVisitItem) => {
-            ListItem() { this.VisitCard(item) }
-          }, (item: ServiceVisitItem) => `${item.id}-${item.status}`)
-        }.layoutWeight(1).width('100%').padding({ left: 16, right: 16, top: 16 }).scrollBar(BarState.Off)
+        // 统计卡固定在头部下方，任务列表滚动
+        this.StatsCard()
+        if (this.visits.length === 0) {
+          Column() {
+            Text('🗓️').fontSize(52).margin({ bottom: 12 })
+            Text('暂无上门服务任务').fontSize(15).fontColor(Theme.TEXT_BODY)
+            Text('系统会按你的技能自动排班').fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ top: 6 })
+          }
+          .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+        } else {
+          List() {
+            ForEach(this.visits, (item: ServiceVisitItem) => {
+              ListItem() { this.VisitCard(item) }
+            }, (item: ServiceVisitItem) => `${item.id}-${item.status}`)
+          }.layoutWeight(1).width('100%').padding({ left: 16, right: 16, top: 16 }).scrollBar(BarState.Off)
+        }
       }
     }
     .width('100%').height('100%').backgroundColor(Theme.BG)

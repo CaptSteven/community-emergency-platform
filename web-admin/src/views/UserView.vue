@@ -51,6 +51,13 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column label="志愿积分" width="100">
+          <template #default="{ row }">
+            <!-- 仅志愿者展示积分，醒目徽章 -->
+            <span v-if="row.role === 'volunteer'" class="points-badge">🏅 {{ row.points || 0 }}</span>
+            <span v-else class="muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="本月取消" width="100">
           <template #default="{ row }">
             <span
@@ -231,5 +238,22 @@ onMounted(loadData)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+}
+
+/* 志愿积分徽章：温暖金色，醒目易识别 */
+.points-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #b45309;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+}
+
+.muted {
+  color: #94a3b8;
 }
 </style>
