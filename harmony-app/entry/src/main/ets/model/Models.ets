@@ -168,7 +168,8 @@ export interface ServiceSubscriptionItem {
   frequency_display: string
   preferred_weekday: number
   preferred_weekday_display: string
-  preferred_time: string
+  preferred_slot: number | null       // 标准整点时段槽（8..19），null=不限
+  preferred_slot_display: string
   address: string
   note: string
   is_active: boolean
@@ -190,6 +191,8 @@ export interface ServiceVisitItem {
   volunteer: number | null
   volunteer_name: string
   scheduled_date: string
+  scheduled_slot: number | null      // 预约整点时段槽（8..19），DDL=槽结束
+  slot_display: string
   status: string
   status_display: string
   address: string
@@ -200,6 +203,9 @@ export interface ServiceVisitItem {
   feedback: string
   completion_photo: string | null
   confirm_photo: string | null     // 居民确认时上传的凭证照片
+  checkin_photo: string | null     // 到场报到照片
+  checkin_distance_m: number | null // 报到距服务地址的距离（米）
+  checkin_remote: boolean          // 远程报到（距离异常）
   systolic: number | null
   diastolic: number | null
   heart_rate: number | null
@@ -234,12 +240,19 @@ export interface CancelVisitPayload {
   note: string
 }
 
+// 到场报到载荷（定位必须；照片报到成功后单独补传）
+export interface CheckinPayload {
+  latitude: number
+  longitude: number
+}
+
 // 居民提交单次任务载荷（无订阅、待管理员派单）
 export interface RequestOncePayload {
   service_type: number
   address: string
   note: string
-  scheduled_date?: string   // 可选期望日期（YYYY-MM-DD）
+  scheduled_date?: string   // 可选期望日期（YYYY-MM-DD，今天~未来14天）
+  scheduled_slot?: number   // 可选期望时段槽（8..19）
 }
 
 // 志愿者本人服务统计（积分与时长）
@@ -281,7 +294,7 @@ export interface CreateSubscriptionPayload {
   service_type: number
   frequency: string
   preferred_weekday: number
-  preferred_time: string
+  preferred_slot: number | null
   note: string
   address: string          // 上门服务地址（居民可指定）
   is_active?: boolean       // 编辑(PUT)时保留生效/暂停状态

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from django.db import transaction
 from django.db.models import Q
@@ -10,6 +10,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from notifications.models import Notification
 from notifications.utils import create_notification
 from tasks.models import TaskCancellation
 from tasks.cancellation import evaluate_cancellation
@@ -142,11 +143,19 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
         """管理员触发：为所有到期服务计划生成工单并自动轮流派单。"""
         if not is_admin(request.user):
             return Response({'message': '只有管理员可以生成排班'}, status=status.HTTP_403_FORBIDDEN)
+        # 例行维护先行：48h 自动确认 / 超时未报到罚分转已错过 / 超 24h 未派单提醒
+        m = scheduler.run_maintenance()
         created, skipped = scheduler.generate_due_visits()
         assigned = sum(1 for v in created if v.volunteer_id)
         msg = f'本次生成 {len(created)} 张工单，其中 {assigned} 张已自动派单。'
         if skipped:
             msg += f'另有 {len(skipped)} 个计划无可用志愿者（且未编排循环组），已跳过、未生成工单，请先编排循环组或补充志愿者。'
+        if m['punished']:
+            msg += f'{m["punished"]} 张工单超时未报到已转「已错过」并扣分。'
+        if m['auto_confirmed']:
+            msg += f'{m["auto_confirmed"]} 张超 48 小时未确认工单已自动确认。'
+        if m['undispatched']:
+            msg += f'{m["undispatched"]} 个单次任务超 24 小时未派单，已提醒。'
         return Response({
             'message': msg,
             'created': len(created),
@@ -154,6 +163,7 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
             'unassigned': len(created) - assigned,
             'skipped': len(skipped),
             'skipped_detail': skipped,
+            'maintenance': m,
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='generate-now')
@@ -278,10 +288,29 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             resident = User.objects.filter(pk=body.get('resident')).first() or request.user
         rp = _profile(resident)
         address = (body.get('address') or '').strip() or (getattr(rp, 'address', '') or '')
-        scheduled_date = body.get('scheduled_date') or date.today()
+        # 标准化时间：日期严格校验（今天~未来14天），时段为 8..19 整点槽（可缺省=不限）
+        today = date.today()
+        scheduled_date = today
+        raw_date = (str(body.get('scheduled_date') or '')).strip()
+        if raw_date:
+            try:
+                scheduled_date = datetime.strptime(raw_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'message': '期望日期格式不正确'}, status=status.HTTP_400_BAD_REQUEST)
+            if not (today <= scheduled_date <= today + timedelta(days=14)):
+                return Response({'message': '期望日期需在今天到未来 14 天内'}, status=status.HTTP_400_BAD_REQUEST)
+        scheduled_slot = None
+        if body.get('scheduled_slot') not in (None, ''):
+            try:
+                scheduled_slot = int(body.get('scheduled_slot'))
+            except (TypeError, ValueError):
+                return Response({'message': '期望时段不正确'}, status=status.HTTP_400_BAD_REQUEST)
+            if not (8 <= scheduled_slot <= 19):
+                return Response({'message': '期望时段需在 08:00-20:00 的整点槽内'}, status=status.HTTP_400_BAD_REQUEST)
         visit = ServiceVisit.objects.create(
             subscription=None, service_type=service_type, resident=resident,
-            volunteer=None, scheduled_date=scheduled_date, status='assigned',
+            volunteer=None, scheduled_date=scheduled_date, scheduled_slot=scheduled_slot,
+            status='assigned',
             address=address, note=(body.get('note') or ''),
             latitude=getattr(rp, 'current_latitude', None), longitude=getattr(rp, 'current_longitude', None),
         )
@@ -327,17 +356,91 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
-        """志愿者开始服务：已排班 -> 服务中。"""
+        """志愿者到场报到：上报定位（必须）→ 已排班 -> 服务中。
+        与服务地址距离 ≤500m 正常报到；超距仍可报到但记录距离并标记「远程报到」供管理员审核。"""
         visit = self.get_object()
         profile = _profile(request.user)
         if profile is None or profile.role != 'volunteer' or visit.volunteer_id != request.user.id:
             return Response({'message': '只能开始分配给自己的服务'}, status=status.HTTP_403_FORBIDDEN)
         if visit.status != 'assigned':
             return Response({'message': '当前状态不可开始'}, status=status.HTTP_400_BAD_REQUEST)
+
+        body = _body(request)
+        try:
+            lat = float(body.get('latitude'))
+            lng = float(body.get('longitude'))
+        except (TypeError, ValueError):
+            return Response({'message': '报到需要上报定位，请开启定位后重试'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 目标坐标：工单坐标优先，缺省回退居民当前坐标
+        target_lat, target_lng = visit.latitude, visit.longitude
+        if target_lat is None or target_lng is None:
+            rp = _profile(visit.resident)
+            target_lat = getattr(rp, 'current_latitude', None) if rp else None
+            target_lng = getattr(rp, 'current_longitude', None) if rp else None
+
+        visit.checkin_latitude = lat
+        visit.checkin_longitude = lng
+        if target_lat is not None and target_lng is not None:
+            dist_m = int(round(scheduler.haversine_km(lat, lng, float(target_lat), float(target_lng)) * 1000))
+            visit.checkin_distance_m = dist_m
+            visit.checkin_remote = dist_m > 500
+        else:
+            visit.checkin_distance_m = None
+            visit.checkin_remote = False
+
+        if 'photo' in request.FILES:
+            visit.checkin_photo = request.FILES['photo']
+
         visit.status = 'processing'
         visit.started_at = timezone.now()
-        visit.save(update_fields=['status', 'started_at'])
-        return Response({'message': '已开始服务', 'visit': ServiceVisitSerializer(visit).data})
+        visit.save()
+
+        if visit.checkin_remote:
+            msg = f'已远程报到（距服务地址约 {visit.checkin_distance_m} 米），该记录管理员可见'
+        else:
+            msg = '报到成功，服务开始'
+        return Response({'message': msg, 'visit': ServiceVisitSerializer(visit).data})
+
+    @action(detail=True, methods=['post'], url_path='checkin-photo')
+    def checkin_photo(self, request, pk=None):
+        """报到照片补传（报到成功后第二步；失败不影响报到本身）。"""
+        visit = self.get_object()
+        profile = _profile(request.user)
+        if profile is None or profile.role != 'volunteer' or visit.volunteer_id != request.user.id:
+            return Response({'message': '只能上传自己工单的报到照片'}, status=status.HTTP_403_FORBIDDEN)
+        if visit.status != 'processing':
+            return Response({'message': '当前状态不可上传报到照片'}, status=status.HTTP_400_BAD_REQUEST)
+        if 'photo' not in request.FILES:
+            return Response({'message': '缺少照片文件'}, status=status.HTTP_400_BAD_REQUEST)
+        visit.checkin_photo = request.FILES['photo']
+        visit.save(update_fields=['checkin_photo'])
+        return Response({'message': '报到照片已上传'})
+
+    @action(detail=True, methods=['post'], url_path='remind-confirm')
+    def remind_confirm(self, request, pk=None):
+        """志愿者催促居民确认（24 小时内同一工单只发一次，防骚扰）。"""
+        visit = self.get_object()
+        profile = _profile(request.user)
+        if profile is None or profile.role != 'volunteer' or visit.volunteer_id != request.user.id:
+            return Response({'message': '只能催促自己的工单'}, status=status.HTTP_403_FORBIDDEN)
+        if visit.status != 'pending_confirm':
+            return Response({'message': '当前状态无需催促确认'}, status=status.HTTP_400_BAD_REQUEST)
+        recently = Notification.objects.filter(
+            recipient=visit.resident, title=scheduler.REMIND_TITLE,
+            related_type='service_visit', related_id=visit.id,
+            created_at__gte=timezone.now() - timedelta(hours=24),
+        ).exists()
+        if recently:
+            return Response({'message': '24 小时内已提醒过，请耐心等待居民确认'}, status=status.HTTP_400_BAD_REQUEST)
+        create_notification(
+            recipient=visit.resident,
+            title=scheduler.REMIND_TITLE,
+            content=f'志愿者 {request.user.username} 提醒您确认「{visit.service_type.name}」服务已完成，'
+                    f'请在 App「上门记录」中查看并确认（48 小时未确认将自动确认）。',
+            category='service', related_type='service_visit', related_id=visit.id,
+        )
+        return Response({'message': '已提醒居民尽快确认'})
 
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
@@ -350,6 +453,13 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             return Response({'message': '当前状态不可完成'}, status=status.HTTP_400_BAD_REQUEST)
 
         body = _body(request)
+        # 健康检查类服务不允许提交空记录：血压/心率/体温缺一不可
+        if visit.service_type.needs_health_record:
+            missing = [f for f in ('systolic', 'diastolic', 'heart_rate', 'temperature')
+                       if body.get(f) in (None, '')]
+            if missing:
+                return Response({'message': '健康检查服务需完整录入血压（高压/低压）、心率与体温后才能提交'},
+                                status=status.HTTP_400_BAD_REQUEST)
         visit.feedback = body.get('feedback', '') or ''
         visit.health_note = body.get('health_note', '') or ''
         # 健康记录需做范围校验，非法/超范围一律 400，杜绝把坏值写入 DB（曾导致读取行时 500 的数据投毒）
@@ -459,7 +569,8 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             replacement = ServiceVisit.objects.create(
                 subscription=visit.subscription, service_type=visit.service_type,
                 resident=visit.resident, volunteer=next_vol,
-                scheduled_date=visit.scheduled_date, status='assigned',
+                scheduled_date=visit.scheduled_date, scheduled_slot=visit.scheduled_slot,
+                status='assigned',
                 address=visit.address, latitude=visit.latitude, longitude=visit.longitude,
             )
 
@@ -523,6 +634,14 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         create_notification(
             recipient=volunteer, title='新的上门服务任务',
             content=f'管理员为你指派了 {visit.resident.username} 的「{visit.service_type.name}」服务。',
+            category='service', related_type='service_visit', related_id=visit.id,
+        )
+        # 任务分配后同步通知居民
+        slot_part = f' {scheduler.slot_display(visit.scheduled_slot)}' if visit.scheduled_slot is not None else ''
+        create_notification(
+            recipient=visit.resident, title='服务已安排志愿者',
+            content=f'您的「{visit.service_type.name}」服务已安排志愿者 {volunteer.username} 上门，'
+                    f'计划日期 {visit.scheduled_date}{slot_part}。',
             category='service', related_type='service_visit', related_id=visit.id,
         )
         return Response({'message': '改派成功', 'visit': ServiceVisitSerializer(visit).data})

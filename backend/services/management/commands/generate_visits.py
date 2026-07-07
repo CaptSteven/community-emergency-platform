@@ -16,10 +16,12 @@ class Command(BaseCommand):
         today = None
         if options.get('date'):
             today = datetime.strptime(options['date'], '%Y-%m-%d').date()
-        # 先把超 7 天未确认的工单自动结单，再生成新排班
-        auto_confirmed = scheduler.auto_confirm_stale()
-        if auto_confirmed:
-            self.stdout.write(self.style.SUCCESS(f'自动确认了 {auto_confirmed} 张超期未确认工单。'))
+        # 例行维护：48h 自动确认 / 超时未报到罚分转已错过 / 超 24h 未派单提醒（须在生成排班前）
+        m = scheduler.run_maintenance()
+        self.stdout.write(self.style.SUCCESS(
+            f'维护：自动确认 {m["auto_confirmed"]} 张，超时未报到转已错过 {m["punished"]} 张，'
+            f'未派单提醒 {m["undispatched"]} 个。'
+        ))
         created, skipped = scheduler.generate_due_visits(today=today, notify=not options.get('no_notify'))
         assigned = sum(1 for v in created if v.volunteer_id)
         self.stdout.write(self.style.SUCCESS(

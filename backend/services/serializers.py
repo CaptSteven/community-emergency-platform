@@ -32,13 +32,18 @@ class ServiceSubscriptionSerializer(serializers.ModelSerializer):
     )
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     rotation_group = serializers.SerializerMethodField()
+    preferred_slot_display = serializers.SerializerMethodField()
+
+    def get_preferred_slot_display(self, obj):
+        return '' if obj.preferred_slot is None else obj.get_preferred_slot_display()
 
     class Meta:
         model = ServiceSubscription
         fields = [
             'id', 'resident', 'resident_name', 'service_type', 'service_type_name',
             'service_type_icon', 'frequency', 'frequency_display', 'preferred_weekday',
-            'preferred_weekday_display', 'preferred_time', 'address', 'latitude', 'longitude',
+            'preferred_weekday_display', 'preferred_slot', 'preferred_slot_display',
+            'address', 'latitude', 'longitude',
             'note', 'is_active', 'start_date', 'last_generated_date',
             'rotation_index', 'rotation_group',
             'created_by', 'created_by_name', 'created_at',
@@ -83,17 +88,25 @@ class ServiceVisitSerializer(serializers.ModelSerializer):
             return '待派单'
         return obj.get_status_display()
 
+    slot_display = serializers.SerializerMethodField()
+
+    def get_slot_display(self, obj):
+        return '' if obj.scheduled_slot is None else obj.get_scheduled_slot_display()
+
     class Meta:
         model = ServiceVisit
         fields = [
             'id', 'subscription', 'service_type', 'service_type_name', 'service_type_icon',
             'needs_health_record', 'resident', 'resident_name', 'volunteer', 'volunteer_name',
-            'scheduled_date', 'status', 'status_display', 'address', 'latitude', 'longitude',
+            'scheduled_date', 'scheduled_slot', 'slot_display',
+            'status', 'status_display', 'address', 'latitude', 'longitude',
             'note', 'duration_minutes', 'feedback', 'completion_photo', 'confirm_photo',
+            'checkin_photo', 'checkin_distance_m', 'checkin_remote',
             'systolic', 'diastolic', 'heart_rate', 'temperature', 'health_note',
             'started_at', 'completed_at', 'confirmed_at', 'created_at',
         ]
         read_only_fields = [
             'service_type', 'resident', 'volunteer', 'status', 'completion_photo', 'confirm_photo',
+            'checkin_photo', 'checkin_distance_m', 'checkin_remote',
             'started_at', 'completed_at', 'confirmed_at', 'created_at',
         ]

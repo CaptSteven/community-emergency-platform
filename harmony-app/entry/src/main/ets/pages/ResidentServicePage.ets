@@ -7,6 +7,12 @@ import { Api, Session } from '../common/Api'
 import { ServiceTypeItem, ServiceSubscriptionItem, ServiceVisitItem, CreateSubscriptionPayload, RequestOncePayload } from '../model/Models'
 import { Theme } from '../common/Theme'
 
+// 日期选项（标准化：今天~未来14天列表选择，不再手敲）
+interface DateOpt {
+  value: string
+  label: string
+}
+
 @Entry
 @Component
 struct ResidentServicePage {
@@ -22,13 +28,14 @@ struct ResidentServicePage {
   @State onceTypeId: number = 0
   @State onceAddress: string = ''
   @State onceNote: string = ''
-  @State onceDate: string = ''
+  @State onceDate: string = ''          // ''=尽快（今天），否则为列表选中的 YYYY-MM-DD
+  @State onceSlot: number = -1          // -1=不限，8..19=整点时段槽
   // 申请周期服务表单
   @State showSubscribe: boolean = false
   @State selectedTypeId: number = 0
   @State frequency: string = 'weekly'
   @State weekday: number = 0
-  @State preferredTime: string = ''
+  @State preferredSlot: number = -1     // -1=不限，8..19=整点时段槽
   @State note: string = ''
   @State serviceAddress: string = ''
   @State editingId: number = 0          // 0=新建申请，>0=编辑该服务计划
@@ -37,6 +44,32 @@ struct ResidentServicePage {
   private weekdayLabels: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   private freqKeys: string[] = ['daily', 'weekly', 'biweekly', 'monthly']
   private freqLabels: string[] = ['每日', '每周', '每两周', '每月']
+  // 标准整点时段槽（与后端 HOUR_SLOT_CHOICES 一致）
+  private hourSlots: number[] = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
+  slotLabel(h: number): string {
+    let a: string = h < 10 ? '0' + h : '' + h
+    let b: string = (h + 1) < 10 ? '0' + (h + 1) : '' + (h + 1)
+    return `${a}:00-${b}:00`
+  }
+
+  // 今天~未来14天的标准日期选项
+  dateOptions(): DateOpt[] {
+    let names: string[] = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+    let opts: DateOpt[] = []
+    for (let i = 0; i <= 14; i++) {
+      let d = new Date()
+      d.setDate(d.getDate() + i)
+      let mm: number = d.getMonth() + 1
+      let dd: number = d.getDate()
+      let ms: string = mm < 10 ? '0' + mm : '' + mm
+      let ds: string = dd < 10 ? '0' + dd : '' + dd
+      let label: string = i === 0 ? '今天' : (i === 1 ? '明天' : (i === 2 ? '后天' : `${ms}-${ds} ${names[d.getDay()]}`))
+      let opt: DateOpt = { value: `${d.getFullYear()}-${ms}-${ds}`, label: label }
+      opts.push(opt)
+    }
+    return opts
+  }
 
   onPageShow() {
     this.loadAll()
@@ -81,7 +114,7 @@ struct ResidentServicePage {
     this.editingActive = true
     this.frequency = 'weekly'
     this.weekday = 0
-    this.preferredTime = ''
+    this.preferredSlot = -1
     this.note = ''
     this.serviceAddress = ''
     if (this.recurringTypes.length > 0) {
@@ -95,6 +128,7 @@ struct ResidentServicePage {
     this.onceNote = ''
     this.onceAddress = this.serviceAddress === '' ? Session.address : this.serviceAddress
     this.onceDate = ''
+    this.onceSlot = -1
     if (this.singleTypes.length > 0) {
       this.onceTypeId = this.singleTypes[0].id
     }
@@ -116,8 +150,11 @@ struct ResidentServicePage {
       address: this.onceAddress,
       note: this.onceNote
     }
-    if (this.onceDate.trim() !== '') {
-      payload.scheduled_date = this.onceDate.trim()
+    if (this.onceDate !== '') {
+      payload.scheduled_date = this.onceDate
+    }
+    if (this.onceSlot >= 0) {
+      payload.scheduled_slot = this.onceSlot
     }
     try {
       await Api.post<RequestOncePayload>('/service-visits/request-once/', payload)
@@ -136,7 +173,7 @@ struct ResidentServicePage {
     this.selectedTypeId = item.service_type
     this.frequency = item.frequency
     this.weekday = item.preferred_weekday
-    this.preferredTime = item.preferred_time
+    this.preferredSlot = item.preferred_slot !== null ? item.preferred_slot : -1
     this.note = item.note
     this.serviceAddress = item.address
     this.showSubscribe = true
@@ -238,7 +275,7 @@ struct ResidentServicePage {
       service_type: this.selectedTypeId,
       frequency: this.frequency,
       preferred_weekday: this.weekday,
-      preferred_time: this.preferredTime,
+      preferred_slot: this.preferredSlot >= 0 ? this.preferredSlot : null,
       note: this.note,
       address: this.serviceAddress
     }
@@ -298,7 +335,7 @@ struct ResidentServicePage {
       }.width('100%')
       Row() {
         Text('🗓️').fontSize(14)
-        Text(`${item.frequency_display} · ${item.preferred_weekday_display}${item.preferred_time !== '' ? ' ' + item.preferred_time : ''}`)
+        Text(`${item.frequency_display} · ${item.preferred_weekday_display}${item.preferred_slot_display !== '' ? ' ' + item.preferred_slot_display : ''}`)
           .fontSize(Theme.FS_BODY).fontColor(Theme.TEXT_BODY).margin({ left: 6 })
       }.width('100%').margin({ top: 10 })
       if (item.address !== '') {
@@ -354,7 +391,7 @@ struct ResidentServicePage {
       }.width('100%')
       Row() {
         Text('📅').fontSize(14)
-        Text(item.scheduled_date).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ left: 4 }).layoutWeight(1)
+        Text(item.scheduled_date + (item.slot_display !== '' ? ' ' + item.slot_display : '')).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED).margin({ left: 4 }).layoutWeight(1)
         if (item.volunteer_name !== '') {
           Text(`志愿者：${item.volunteer_name}`).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_MUTED)
         }
@@ -439,10 +476,37 @@ struct ResidentServicePage {
         .height(80).width('100%').margin({ bottom: 12 })
         .onChange((v: string) => { this.onceNote = v })
 
-      Text('期望日期（选填）').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ bottom: 8 })
-      TextInput({ placeholder: '如 2026-07-10；留空由管理员安排', text: this.onceDate })
-        .width('100%').margin({ bottom: 16 })
-        .onChange((v: string) => { this.onceDate = v })
+      Text('期望日期（列表选择）').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ bottom: 8 })
+      Flex({ wrap: FlexWrap.Wrap }) {
+        Text('尽快')
+          .fontSize(13).fontColor(this.onceDate === '' ? Color.White : Theme.TEXT_BODY)
+          .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
+          .backgroundColor(this.onceDate === '' ? Theme.SUCCESS : '#F0FDF4').borderRadius(16)
+          .onClick(() => { this.onceDate = '' })
+        ForEach(this.dateOptions(), (d: DateOpt) => {
+          Text(d.label)
+            .fontSize(13).fontColor(this.onceDate === d.value ? Color.White : Theme.TEXT_BODY)
+            .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
+            .backgroundColor(this.onceDate === d.value ? Theme.SUCCESS : '#F0FDF4').borderRadius(16)
+            .onClick(() => { this.onceDate = d.value })
+        }, (d: DateOpt) => `od-${d.value}`)
+      }.width('100%').margin({ bottom: 6 })
+
+      Text('期望时段（列表选择）').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ top: 8, bottom: 8 })
+      Flex({ wrap: FlexWrap.Wrap }) {
+        Text('不限')
+          .fontSize(13).fontColor(this.onceSlot === -1 ? Color.White : Theme.TEXT_BODY)
+          .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
+          .backgroundColor(this.onceSlot === -1 ? Theme.SUCCESS : '#F0FDF4').borderRadius(16)
+          .onClick(() => { this.onceSlot = -1 })
+        ForEach(this.hourSlots, (h: number) => {
+          Text(this.slotLabel(h))
+            .fontSize(13).fontColor(this.onceSlot === h ? Color.White : Theme.TEXT_BODY)
+            .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
+            .backgroundColor(this.onceSlot === h ? Theme.SUCCESS : '#F0FDF4').borderRadius(16)
+            .onClick(() => { this.onceSlot = h })
+        }, (h: number) => `os-${h}`)
+      }.width('100%').margin({ bottom: 10 })
 
       Row() {
         Button('取消')
@@ -498,9 +562,21 @@ struct ResidentServicePage {
         }, (w: string) => w)
       }.width('100%')
 
-      Text('首选时段').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY).margin({ top: 8, bottom: 8 })
-      TextInput({ placeholder: '如 09:00', text: this.preferredTime }).width('100%').margin({ bottom: 12 })
-        .onChange((v: string) => { this.preferredTime = v })
+      Text('首选时段（列表选择）').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY).margin({ top: 8, bottom: 8 })
+      Flex({ wrap: FlexWrap.Wrap }) {
+        Text('不限')
+          .fontSize(13).fontColor(this.preferredSlot === -1 ? Color.White : Theme.TEXT_BODY)
+          .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
+          .backgroundColor(this.preferredSlot === -1 ? Theme.PRIMARY : '#EEF2FF').borderRadius(16)
+          .onClick(() => { this.preferredSlot = -1 })
+        ForEach(this.hourSlots, (h: number) => {
+          Text(this.slotLabel(h))
+            .fontSize(13).fontColor(this.preferredSlot === h ? Color.White : Theme.TEXT_BODY)
+            .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
+            .backgroundColor(this.preferredSlot === h ? Theme.PRIMARY : '#EEF2FF').borderRadius(16)
+            .onClick(() => { this.preferredSlot = h })
+        }, (h: number) => `ps-${h}`)
+      }.width('100%').margin({ bottom: 12 })
 
       Text('服务地址（上门位置）').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY).margin({ bottom: 8 })
       TextInput({ placeholder: '如 水磨沟区XX路X号楼X单元；留空取账号地址', text: this.serviceAddress })

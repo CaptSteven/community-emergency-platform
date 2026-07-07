@@ -1,8 +1,11 @@
 import router from '@ohos.router'
 import promptAction from '@ohos.promptAction'
+import picker from '@ohos.file.picker'
+import fs from '@ohos.file.fs'
+import { common } from '@kit.AbilityKit'
 import { Api, Session } from '../common/Api'
 import { LocationService } from '../common/LocationService'
-import { ServiceVisitItem, CompleteVisitPayload, CancelVisitPayload, LocationResult, MyStats } from '../model/Models'
+import { ServiceVisitItem, CompleteVisitPayload, CancelVisitPayload, CheckinPayload, LocationResult, MyStats } from '../model/Models'
 import { Theme } from '../common/Theme'
 
 // 百度路线导航参数：起点(当前定位) → 终点(服务点坐标或地址)
@@ -110,13 +113,118 @@ struct VolunteerServicePage {
     router.pushUrl({ url: 'pages/RouteNaviPage', params: params })
   }
 
-  async startVisit(item: ServiceVisitItem) {
+  // 是否已过报到 DDL（所选时段结束；无时段=服务日次日 0 点）——仅用于界面红字提示
+  isOverdue(item: ServiceVisitItem): boolean {
+    if (item.status !== 'assigned') {
+      return false
+    }
+    let ddl = new Date(item.scheduled_date + 'T00:00:00')
+    if (item.scheduled_slot !== null) {
+      ddl.setHours(item.scheduled_slot + 1, 0, 0, 0)
+    } else {
+      ddl.setDate(ddl.getDate() + 1)
+    }
+    return new Date().getTime() >= ddl.getTime()
+  }
+
+  // 实际报到：定位 JSON 报到；photoUri 非空则报到成功后补传报到照（失败不影响报到）
+  async doCheckin(item: ServiceVisitItem, lat: number, lng: number, photoUri: string) {
     try {
-      await Api.postEmpty(`/service-visits/${item.id}/start/`)
-      promptAction.showToast({ message: '已开始服务' })
+      let payload: CheckinPayload = { latitude: lat, longitude: lng }
+      let resp = await Api.post<CheckinPayload>(`/service-visits/${item.id}/start/`, payload) as Record<string, Object>
+      let msg: string = resp['message'] !== undefined ? resp['message'] as string : '报到成功'
+      promptAction.showToast({ message: msg, duration: 3000 })
+      if (photoUri !== '') {
+        try {
+          let ctx = getContext(this) as common.UIAbilityContext
+          let name: string = 'checkin_' + item.id + '.jpg'
+          let src = fs.openSync(photoUri, fs.OpenMode.READ_ONLY)
+          let dst = fs.openSync(ctx.cacheDir + '/' + name, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
+          fs.copyFileSync(src.fd, dst.fd)
+          fs.closeSync(src)
+          fs.closeSync(dst)
+          await Api.uploadFile(`/service-visits/${item.id}/checkin-photo/`, 'internal://cache/' + name, 'photo')
+        } catch (err) {
+          promptAction.showToast({ message: '报到成功，但照片上传失败，可稍后联系管理员补充' })
+        }
+      }
       this.loadVisits()
     } catch (err) {
-      promptAction.showToast({ message: '操作失败：' + (err as Error).message })
+      promptAction.showToast({ message: '报到失败：' + (err as Error).message })
+    }
+  }
+
+  // 到场报到：定位必须；拍照留证可选，相册为空时回退询问，绝不静默失败
+  async checkinVisit(item: ServiceVisitItem) {
+    let lat: number = 0
+    let lng: number = 0
+    try {
+      let loc: LocationResult = await LocationService.getCurrentLocation()
+      lat = loc.latitude
+      lng = loc.longitude
+    } catch (err) {
+      promptAction.showToast({ message: '报到必须开启定位，请打开定位后重试' })
+      return
+    }
+    let choice: number = -1
+    try {
+      let res = await promptAction.showActionMenu({
+        title: '到场报到（将上报当前位置）',
+        buttons: [
+          { text: '📍 直接报到', color: '#16A34A' },
+          { text: '📷 拍照留证并报到', color: '#2563EB' }
+        ]
+      })
+      choice = res.index
+    } catch (err) {
+      return  // 用户取消
+    }
+    if (choice === 0) {
+      await this.doCheckin(item, lat, lng, '')
+      return
+    }
+    if (choice !== 1) {
+      return
+    }
+    let picked: string = ''
+    try {
+      let photoPicker = new picker.PhotoViewPicker()
+      let sel = await photoPicker.select({ MIMEType: picker.PhotoViewMIMETypes.IMAGE_TYPE, maxSelectNumber: 1 })
+      if (sel.photoUris && sel.photoUris.length > 0) {
+        picked = sel.photoUris[0]
+      }
+    } catch (err) {
+      // 选择器异常按未选处理
+    }
+    if (picked === '') {
+      try {
+        let r = await promptAction.showDialog({
+          title: '未选择照片',
+          message: '没有选到照片（相册可能为空）。是否不留照片、直接完成报到？',
+          buttons: [
+            { text: '再想想', color: '#64748B' },
+            { text: '直接报到', color: '#16A34A' }
+          ]
+        })
+        if (r.index === 1) {
+          await this.doCheckin(item, lat, lng, '')
+        }
+      } catch (err) {
+        // 关闭弹窗即放弃
+      }
+      return
+    }
+    await this.doCheckin(item, lat, lng, picked)
+  }
+
+  // 催促居民确认（24 小时内同一工单只发一次）
+  async remindConfirm(item: ServiceVisitItem) {
+    try {
+      let resp = await Api.postEmpty(`/service-visits/${item.id}/remind-confirm/`) as Record<string, Object>
+      let msg: string = resp['message'] !== undefined ? resp['message'] as string : '已提醒居民'
+      promptAction.showToast({ message: msg, duration: 3000 })
+    } catch (err) {
+      promptAction.showToast({ message: (err as Error).message })
     }
   }
 
@@ -314,7 +422,7 @@ struct VolunteerServicePage {
 
       Row() {
         Text('📅').fontSize(13)
-        Text(`计划日期：${item.scheduled_date}`).fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ left: 6 })
+        Text(`计划日期：${item.scheduled_date}${item.slot_display !== '' ? ' ' + item.slot_display : ''}`).fontSize(13).fontColor(Theme.TEXT_MUTED).margin({ left: 6 })
       }.width('100%').margin({ top: 6 })
 
       Row() {
@@ -350,11 +458,21 @@ struct VolunteerServicePage {
           .onClick(() => { this.openBaiduNav(item) })
       }
 
+      if (item.status === 'assigned' && this.isOverdue(item)) {
+        // 已过报到 DDL：即将由系统转「已错过」并扣 10 分
+        Row() {
+          Text('⚠️').fontSize(14)
+          Text('已超过报到时限，将转为「已错过」并扣 10 积分').fontSize(13).fontColor(Theme.DANGER).margin({ left: 6 })
+        }
+        .width('100%').padding(10).margin({ top: 10 })
+        .backgroundColor('#FEF2F2').borderRadius(Theme.RADIUS_SM)
+      }
+
       if (item.status === 'assigned') {
-        Button('开始服务')
+        Button('📍 到场报到（拍照+定位）')
           .width('100%').height(40).fontSize(14).fontColor(Color.White)
           .backgroundColor(Theme.PRIMARY).borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
-          .onClick(() => { this.startVisit(item) })
+          .onClick(() => { this.checkinVisit(item) })
       }
 
       if (item.status === 'assigned' || item.status === 'processing') {
@@ -377,6 +495,12 @@ struct VolunteerServicePage {
         }
         .width('100%').padding(10).margin({ top: 10 })
         .backgroundColor('#EDE9FE').borderRadius(Theme.RADIUS_SM)
+
+        // 催促居民尽快确认（后端 24h 去重防骚扰）
+        Button('🔔 提醒居民确认')
+          .width('100%').height(36).fontSize(13).fontColor('#8B5CF6')
+          .backgroundColor('#F5F3FF').borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
+          .onClick(() => { this.remindConfirm(item) })
       }
     }
     .width('100%').padding(16).alignItems(HorizontalAlign.Start)

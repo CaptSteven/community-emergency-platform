@@ -7,12 +7,16 @@
 - 轮流规则：在候选人中选“该服务类型累计工单数最少”者，实现负载均衡式轮换。
 - 无人可派：仍生成工单但 volunteer 为空，并通知管理员人工处理。
 """
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from math import radians, sin, cos, asin, sqrt
 
 from django.contrib.auth.models import User
 
 from .models import ServiceSubscription, ServiceVisit
+
+# 通知去重键（title + related_type + related_id），文案改动必须同步这里
+UNDISPATCHED_TITLE = '单次任务超时未派单'
+REMIND_TITLE = '请尽快确认服务完成'
 
 
 FREQ_DAYS = {'daily': 1, 'weekly': 7, 'biweekly': 14, 'monthly': 30}
@@ -134,6 +138,7 @@ def create_visit_for(subscription, today, notify=True):
         resident=subscription.resident,
         volunteer=volunteer,
         scheduled_date=today,
+        scheduled_slot=subscription.preferred_slot,
         status='assigned',
         address=subscription.address or '',
         latitude=subscription.latitude,
@@ -205,13 +210,13 @@ def finalize_visit(visit):
     return earned
 
 
-def auto_confirm_stale(days=7, now=None):
-    """把超过 N 天仍未被居民确认的「待居民确认」工单自动结单并计分。返回自动确认的数量。"""
+def auto_confirm_stale(hours=48, now=None):
+    """把超过 N 小时仍未被居民确认的「待居民确认」工单自动结单并计分。返回自动确认的数量。"""
     from django.utils import timezone
 
     if now is None:
         now = timezone.now()
-    deadline = now - timedelta(days=days)
+    deadline = now - timedelta(hours=hours)
     stale = ServiceVisit.objects.filter(
         status='pending_confirm', completed_at__lt=deadline
     ).select_related('volunteer', 'volunteer__profile', 'resident', 'service_type')
@@ -222,18 +227,132 @@ def auto_confirm_stale(days=7, now=None):
     return count
 
 
+def slot_display(slot):
+    """整点槽显示文本；None 返回空串。"""
+    if slot is None:
+        return ''
+    return f'{slot:02d}:00-{slot + 1:02d}:00'
+
+
+def visit_deadline(visit):
+    """报到 DDL：所选时段结束整点；未选时段则为服务日次日 00:00（naive 本地时间，USE_TZ=False）。"""
+    if visit.scheduled_slot is not None:
+        return datetime.combine(visit.scheduled_date, time(visit.scheduled_slot + 1, 0))
+    return datetime.combine(visit.scheduled_date + timedelta(days=1), time(0, 0))
+
+
+OVERDUE_PENALTY = 10  # 超时未报到扣分
+
+
+def punish_overdue(now=None):
+    """超过 DDL 仍未到场报到的工单：转「已错过」、志愿者扣分(不为负)、通知志愿者与管理员。
+
+    只处理已派单(volunteer 非空)且仍为 assigned 的工单——待派单的单次任务不在此列。
+    须在 generate_due_visits 之前执行：missed 后订阅才能生成下一张工单。
+    """
+    from django.utils import timezone
+    from notifications.utils import create_notification
+
+    if now is None:
+        now = timezone.now()
+    candidates = ServiceVisit.objects.filter(
+        status='assigned', volunteer__isnull=False, scheduled_date__lte=now.date()
+    ).select_related('volunteer', 'volunteer__profile', 'resident', 'service_type')
+    admins = list(User.objects.filter(is_active=True).filter(models_q_admin()))
+    count = 0
+    for visit in candidates:
+        if now < visit_deadline(visit):
+            continue
+        visit.status = 'missed'
+        visit.save(update_fields=['status'])
+        vp = getattr(visit.volunteer, 'profile', None)
+        if vp is not None:
+            vp.points = max(0, (vp.points or 0) - OVERDUE_PENALTY)
+            vp.save(update_fields=['points'])
+        slot_part = f'（时段 {slot_display(visit.scheduled_slot)}）' if visit.scheduled_slot is not None else ''
+        create_notification(
+            recipient=visit.volunteer,
+            title='服务超时未报到，已扣分',
+            content=f'{visit.resident.username} 的「{visit.service_type.name}」服务'
+                    f'{slot_part}已超时未到场报到，工单转为已错过，扣除 {OVERDUE_PENALTY} 积分。',
+            category='service', related_type='service_visit', related_id=visit.id,
+        )
+        for admin in admins:
+            create_notification(
+                recipient=admin,
+                title='工单超时未报到',
+                content=f'志愿者 {visit.volunteer.username} 未在 DDL 前报到，'
+                        f'{visit.resident.username} 的「{visit.service_type.name}」已转已错过，请改派。',
+                category='service', related_type='service_visit', related_id=visit.id,
+            )
+        count += 1
+    return count
+
+
+def notify_undispatched(now=None):
+    """单次任务提交超 24 小时仍未派单：提醒管理员（按通知标题+工单去重，只提醒一次）。"""
+    from django.utils import timezone
+    from notifications.models import Notification
+    from notifications.utils import create_notification
+
+    if now is None:
+        now = timezone.now()
+    stale = ServiceVisit.objects.filter(
+        subscription__isnull=True, volunteer__isnull=True, status='assigned',
+        created_at__lt=now - timedelta(hours=24),
+    ).select_related('resident', 'service_type')
+    admins = list(User.objects.filter(is_active=True).filter(models_q_admin()))
+    count = 0
+    for visit in stale:
+        if Notification.objects.filter(
+            title=UNDISPATCHED_TITLE, related_type='service_visit', related_id=visit.id
+        ).exists():
+            continue
+        for admin in admins:
+            create_notification(
+                recipient=admin,
+                title=UNDISPATCHED_TITLE,
+                content=f'{visit.resident.username} 的「{visit.service_type.name}」单次任务'
+                        f'已提交超过 24 小时仍未分配志愿者，请尽快在地图上派单。',
+                category='service', related_type='service_visit', related_id=visit.id,
+            )
+        count += 1
+    return count
+
+
+def run_maintenance(now=None):
+    """例行维护聚合入口（每日命令与管理员「生成排班」共用）：
+    自动确认超时未确认 → 惩罚超时未报到 → 提醒超时未派单。顺序不可调换（punish 需在生成前）。"""
+    return {
+        'auto_confirmed': auto_confirm_stale(now=now),
+        'punished': punish_overdue(now=now),
+        'undispatched': notify_undispatched(now=now),
+    }
+
+
 def _notify_new_visit(visit):
     """新工单通知：有志愿者通知志愿者，无志愿者通知管理员。"""
     # 延迟导入避免应用加载期循环依赖
     from notifications.utils import create_notification
 
     st = visit.service_type
+    slot_part = f' {slot_display(visit.scheduled_slot)}' if visit.scheduled_slot is not None else ''
     if visit.volunteer:
         create_notification(
             recipient=visit.volunteer,
             title='新的上门服务任务',
             content=f'您被安排为 {visit.resident.username} 提供「{st.name}」服务，'
-                    f'计划日期 {visit.scheduled_date}。',
+                    f'计划日期 {visit.scheduled_date}{slot_part}。',
+            category='service',
+            related_type='service_visit',
+            related_id=visit.id,
+        )
+        # 同步告知居民：任务已分配到人
+        create_notification(
+            recipient=visit.resident,
+            title='服务已安排志愿者',
+            content=f'您的「{st.name}」服务已安排志愿者 {visit.volunteer.username} 上门，'
+                    f'计划日期 {visit.scheduled_date}{slot_part}。',
             category='service',
             related_type='service_visit',
             related_id=visit.id,

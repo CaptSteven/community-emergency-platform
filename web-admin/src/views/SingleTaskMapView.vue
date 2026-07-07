@@ -56,6 +56,8 @@
               <div class="task-addr">{{ t.address || t.note || '未填写地址' }}</div>
               <div class="task-tags">
                 <el-tag size="small" effect="plain" round>{{ t.scheduled_date || '不限日期' }}</el-tag>
+                <el-tag v-if="t.slot_display" size="small" type="warning" effect="plain" round>🕐 {{ t.slot_display }}</el-tag>
+                <el-tag v-if="isDispatchOverdue(t)" size="small" type="danger" effect="dark" round>超24h未派</el-tag>
                 <el-tag
                   v-if="hasCoord(t)"
                   size="small"
@@ -134,6 +136,7 @@
         <el-descriptions-item label="联系电话">{{ residentInfo?.phone || '—' }}</el-descriptions-item>
         <el-descriptions-item label="所在社区">{{ residentInfo?.community || '—' }}</el-descriptions-item>
         <el-descriptions-item label="期望日期">{{ detailTask.scheduled_date || '不限' }}</el-descriptions-item>
+        <el-descriptions-item label="期望时段">{{ detailTask.slot_display || '不限' }}</el-descriptions-item>
         <el-descriptions-item label="上门地址">{{ detailTask.address || '—' }}</el-descriptions-item>
         <el-descriptions-item label="需求说明">{{ detailTask.note || '—' }}</el-descriptions-item>
         <el-descriptions-item label="定位">
@@ -297,6 +300,9 @@ const residentInfo = ref(null) // 任务详情补充：居民联系方式
 const volLoad = ref(null) // 志愿者详情补充：在办工单数
 
 const formatTime = v => (v ? String(v).replace('T', ' ').slice(0, 19) : '—')
+
+// 提交超过 24 小时仍未派单：红标提醒（后端每日维护也会给管理员发通知）
+const isDispatchOverdue = t => t.created_at && (Date.now() - new Date(t.created_at).getTime() > 24 * 3600 * 1000)
 
 // 点击任务红标：选中（保持派单流程）并打开详情，异步补居民联系方式
 const openTaskDetail = async t => {

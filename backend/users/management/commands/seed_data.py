@@ -158,25 +158,29 @@ class Command(BaseCommand):
             obj.save()
             type_objs[st['code']] = obj
 
-        # === 服务计划（为老人建立周期性服务）===
+        # === 服务计划（为老人建立周期性服务；preferred_slot=标准整点时段）===
         plans = [
-            (resident1, 'health_check', 'weekly', 0),
-            (resident1, 'grocery', 'weekly', 2),
-            (resident02, 'health_check', 'weekly', 1),
-            (resident02, 'cleaning', 'biweekly', 4),
+            (resident1, 'health_check', 'weekly', 0, 9),
+            (resident1, 'grocery', 'weekly', 2, 10),
+            (resident02, 'health_check', 'weekly', 1, 14),
+            (resident02, 'cleaning', 'biweekly', 4, 15),
         ]
-        for res, code, freq, weekday in plans:
+        for res, code, freq, weekday, slot in plans:
             rp = getattr(res, 'profile', None)
-            ServiceSubscription.objects.get_or_create(
+            sub, _created = ServiceSubscription.objects.get_or_create(
                 resident=res, service_type=type_objs[code],
                 defaults=dict(
-                    frequency=freq, preferred_weekday=weekday, is_active=True,
+                    frequency=freq, preferred_weekday=weekday, preferred_slot=slot, is_active=True,
                     start_date=timezone.now().date(),
                     address=(rp.address if rp else ''),
                     longitude=(rp.current_longitude if rp else None),
                     latitude=(rp.current_latitude if rp else None),
                 )
             )
+            # 老库已有的计划补上标准时段
+            if sub.preferred_slot is None:
+                sub.preferred_slot = slot
+                sub.save(update_fields=['preferred_slot'])
 
         # 生成一批到期工单并自动派单，方便演示（不发通知，避免刷屏）
         scheduler.generate_due_visits(notify=False)

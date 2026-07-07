@@ -64,6 +64,7 @@
     <div class="card">
       <el-table :data="items" v-loading="loading" stripe>
         <el-table-column prop="scheduled_date" label="计划日期" width="120" />
+        <el-table-column label="时段" width="110"><template #default="{ row }">{{ row.slot_display || '—' }}</template></el-table-column>
         <el-table-column prop="resident_name" label="受益居民" min-width="100" />
         <el-table-column label="服务" min-width="170">
           <template #default="{ row }">
@@ -162,6 +163,17 @@
         </el-descriptions-item>
         <el-descriptions-item label="志愿者">{{ current.volunteer_name || '待派单' }}</el-descriptions-item>
         <el-descriptions-item label="计划日期">{{ current.scheduled_date }}</el-descriptions-item>
+        <el-descriptions-item label="预约时段">{{ current.slot_display || '不限' }}</el-descriptions-item>
+        <el-descriptions-item v-if="current.started_at" label="到场报到">
+          {{ current.started_at.replace('T', ' ').slice(0, 19) }}
+          <template v-if="current.checkin_distance_m != null">
+            · 距服务地址 {{ current.checkin_distance_m }} 米
+          </template>
+          <el-tag v-if="current.checkin_remote" type="danger" effect="dark" size="small" style="margin-left:8px">远程报到</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="current.checkin_photo" label="报到照片">
+          <el-image style="width:120px" :src="photoUrl(current.checkin_photo)" :preview-src-list="[photoUrl(current.checkin_photo)]" fit="cover" />
+        </el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="statusType(current.status)" effect="dark" size="small">{{ current.status_display }}</el-tag>
         </el-descriptions-item>

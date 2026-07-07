@@ -26,6 +26,9 @@ WEEKDAY_CHOICES = (
     (6, '周日'),
 )
 
+# 标准化整点小时槽（08:00-20:00 共 12 档）：居民不再手敲时间，前后端统一用槽起始小时 int 表示
+HOUR_SLOT_CHOICES = tuple((h, f'{h:02d}:00-{h + 1:02d}:00') for h in range(8, 20))
+
 
 class ServiceType(models.Model):
     """社区服务目录：健康检查/助浴/代购/陪诊/保洁等长期服务类型。"""
@@ -76,8 +79,8 @@ class ServiceSubscription(models.Model):
     preferred_weekday = models.IntegerField(
         choices=WEEKDAY_CHOICES, default=0, verbose_name='首选星期'
     )
-    preferred_time = models.CharField(
-        max_length=10, blank=True, default='', verbose_name='首选时段'
+    preferred_slot = models.IntegerField(
+        choices=HOUR_SLOT_CHOICES, null=True, blank=True, verbose_name='首选时段(整点槽)'
     )
     address = models.CharField(max_length=255, blank=True, default='', verbose_name='服务地址')
     latitude = models.DecimalField(
@@ -135,6 +138,10 @@ class ServiceVisit(models.Model):
         related_name='service_duties', verbose_name='服务志愿者'
     )
     scheduled_date = models.DateField(verbose_name='计划上门日期')
+    scheduled_slot = models.IntegerField(
+        choices=HOUR_SLOT_CHOICES, null=True, blank=True, verbose_name='预约时段(整点槽)',
+        help_text='DDL=该时段结束；志愿者须在此前到场报到，否则转已错过并扣分'
+    )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default='assigned', verbose_name='工单状态'
     )
@@ -155,6 +162,22 @@ class ServiceVisit(models.Model):
     confirm_photo = models.FileField(
         upload_to='service_visits/', null=True, blank=True, verbose_name='居民确认照片'
     )
+
+    # 到场报到（check-in）：志愿者到居民位置拍照+上报定位后才转「服务中」
+    checkin_photo = models.FileField(
+        upload_to='service_visits/', null=True, blank=True, verbose_name='报到照片'
+    )
+    checkin_latitude = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True, verbose_name='报到纬度'
+    )
+    checkin_longitude = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True, verbose_name='报到经度'
+    )
+    checkin_distance_m = models.IntegerField(
+        null=True, blank=True, verbose_name='报到距离(米)',
+        help_text='报到位置与服务地址的直线距离；超 500 米标记远程报到'
+    )
+    checkin_remote = models.BooleanField(default=False, verbose_name='远程报到(距离异常)')
 
     # 健康记录字段（仅健康检查类服务使用，其余留空）
     systolic = models.IntegerField(null=True, blank=True, verbose_name='收缩压(高压)')

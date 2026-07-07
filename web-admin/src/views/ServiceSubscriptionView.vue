@@ -24,7 +24,7 @@
         </el-table-column>
         <el-table-column prop="frequency_display" label="周期" width="90" />
         <el-table-column prop="preferred_weekday_display" label="首选日" width="90" />
-        <el-table-column prop="preferred_time" label="时段" width="90" />
+        <el-table-column label="时段" width="110"><template #default="{ row }">{{ row.preferred_slot_display || '不限' }}</template></el-table-column>
         <el-table-column prop="address" label="服务地址" min-width="150" show-overflow-tooltip />
         <el-table-column prop="last_generated_date" label="最近排班" width="110">
           <template #default="{ row }">
@@ -130,7 +130,9 @@
           </el-select>
         </el-form-item>
         <el-form-item label="首选时段">
-          <el-input v-model="form.preferred_time" placeholder="如 09:00" style="width: 160px" />
+          <el-select v-model="form.preferred_slot" placeholder="不限" clearable style="width: 180px">
+            <el-option v-for="h in HOUR_SLOTS" :key="h" :label="slotLabel(h)" :value="h" />
+          </el-select>
         </el-form-item>
         <el-form-item label="服务地址">
           <el-input v-model="form.address" placeholder="留空则取居民资料地址" />
@@ -209,7 +211,7 @@ const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 
 const blank = () => ({
   resident: null, service_type: null, frequency: 'weekly',
-  preferred_weekday: 0, preferred_time: '', address: '', note: '', is_active: true
+  preferred_weekday: 0, preferred_slot: null, address: '', note: '', is_active: true
 })
 const form = reactive(blank())
 
@@ -286,7 +288,7 @@ const openEdit = row => {
   editing.value = true; editId.value = row.id
   Object.assign(form, {
     resident: row.resident, service_type: row.service_type, frequency: row.frequency,
-    preferred_weekday: row.preferred_weekday, preferred_time: row.preferred_time || '',
+    preferred_weekday: row.preferred_weekday, preferred_slot: row.preferred_slot ?? null,
     address: row.address || '', note: row.note || '', is_active: row.is_active
   })
   dialogVisible.value = true

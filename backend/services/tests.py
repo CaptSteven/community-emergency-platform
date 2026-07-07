@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -8,6 +8,10 @@ from users.models import UserProfile
 from tasks.models import TaskCancellation
 from .models import ServiceType, ServiceSubscription, ServiceVisit
 from . import scheduler
+
+# 报到定位（乌鲁木齐，与演示居民同城）与健康检查必填数值的公共测试数据
+CHECKIN = {'latitude': 43.8256, 'longitude': 87.6168}
+VITALS = {'systolic': 120, 'diastolic': 80, 'heart_rate': 72, 'temperature': 36.5}
 
 COMMUNITY = '乌鲁木齐水磨沟社区'
 
@@ -172,7 +176,7 @@ class VisitLifecycleTests(APITestCase):
     def test_start_complete_then_resident_confirm(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        r1 = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        r1 = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
         self.assertEqual(r1.status_code, 200)
         visit.refresh_from_db()
         self.assertEqual(visit.status, 'processing')
@@ -208,9 +212,9 @@ class VisitLifecycleTests(APITestCase):
     def test_confirm_rejected_for_non_owner_resident(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
         self.client.post('/api/service-visits/%d/complete/' % visit.id,
-                         {'feedback': 'ok'}, format='json')
+                         dict(VITALS, feedback='ok'), format='json')
         # 另一位居民不能确认别人的工单（get_queryset 收敛 -> 404）
         other_res = make_user('vl_res_x', 'resident', community=COMMUNITY)
         self.client.force_authenticate(other_res)
@@ -223,17 +227,17 @@ class VisitLifecycleTests(APITestCase):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
         self.client.post('/api/service-visits/%d/complete/' % visit.id,
-                         {'feedback': 'ok'}, format='json')
+                         dict(VITALS, feedback='ok'), format='json')
         resp = self.client.post('/api/service-visits/%d/confirm/' % visit.id, {}, format='json')
         self.assertIn(resp.status_code, (403, 404))
 
     def test_auto_confirm_stale_finalizes_and_scores(self):
         visit = self._visit(status='pending_confirm')
         visit.duration_minutes = 60
-        # 完成提交时间设为 8 天前
-        visit.completed_at = timezone.now() - timedelta(days=8)
+        # 完成提交时间设为 49 小时前（超过 48h 阈值）
+        visit.completed_at = timezone.now() - timedelta(hours=49)
         visit.save(update_fields=['duration_minutes', 'completed_at'])
-        count = scheduler.auto_confirm_stale(days=7)
+        count = scheduler.auto_confirm_stale(hours=48)
         self.assertEqual(count, 1)
         visit.refresh_from_db()
         self.assertEqual(visit.status, 'completed')
@@ -243,16 +247,16 @@ class VisitLifecycleTests(APITestCase):
 
     def test_auto_confirm_skips_recent(self):
         visit = self._visit(status='pending_confirm')
-        visit.completed_at = timezone.now() - timedelta(days=2)   # 未超期
+        visit.completed_at = timezone.now() - timedelta(hours=47)   # 未超 48h
         visit.save(update_fields=['completed_at'])
-        self.assertEqual(scheduler.auto_confirm_stale(days=7), 0)
+        self.assertEqual(scheduler.auto_confirm_stale(hours=48), 0)
         visit.refresh_from_db()
         self.assertEqual(visit.status, 'pending_confirm')
 
     def test_cannot_start_others_visit(self):
         visit = self._visit(volunteer=self.vol)
         self.client.force_authenticate(self.vol2)
-        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
         self.assertIn(resp.status_code, (403, 404))
 
     def test_cancel_reverts_and_reassigns(self):
@@ -467,7 +471,7 @@ class AccessControlHardeningTests(APITestCase):
         self.client.force_authenticate(self.resident)
         resp = self.client.put('/api/service-subscriptions/%d/' % sub.id, {
             'service_type': self.stype.id, 'frequency': 'monthly', 'preferred_weekday': 2,
-            'preferred_time': '10:00', 'note': '改了', 'address': '水磨沟区新地址1号', 'is_active': True,
+            'preferred_slot': 10, 'note': '改了', 'address': '水磨沟区新地址1号', 'is_active': True,
         }, format='json')
         self.assertEqual(resp.status_code, 200)
         sub.refresh_from_db()
@@ -650,8 +654,8 @@ class SingleTaskAndPointsTests(APITestCase):
         visit = ServiceVisit.objects.create(service_type=self.stype, resident=self.resident,
                                             volunteer=self.vol1, scheduled_date=date.today(), status='assigned')
         self.client.force_authenticate(self.vol1)
-        self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
-        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id, {'feedback': 'ok'}, format='json')
+        self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id, dict(VITALS, feedback='ok'), format='json')
         self.assertEqual(resp.status_code, 200)
         visit.refresh_from_db()
         self.assertEqual(visit.status, 'pending_confirm')
@@ -784,3 +788,268 @@ class ManualRotationGroupTests(APITestCase):
         resp = self.client.post('/api/service-subscriptions/%d/set-group/' % self.sub.id,
                                 {'volunteer_ids': [self.v1.id]}, format='json')
         self.assertEqual(resp.status_code, 403)
+
+
+class CheckinTests(APITestCase):
+    """到场报到：定位必填、距离判定、远程标记、照片补传。"""
+
+    def setUp(self):
+        self.resident = make_user('ck_res', 'resident', community=COMMUNITY)
+        self.vol = make_user('ck_v1', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.stype = ServiceType.objects.create(name='健康检查', code='ck_health', required_skill='医疗')
+
+    def _visit(self, lat=43.8256, lng=87.6168, slot=9):
+        return ServiceVisit.objects.create(
+            service_type=self.stype, resident=self.resident, volunteer=self.vol,
+            scheduled_date=date.today(), scheduled_slot=slot, status='assigned',
+            latitude=lat, longitude=lng)
+
+    def test_checkin_requires_location(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'assigned')   # 状态未变
+
+    def test_checkin_near_ok(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        self.assertEqual(resp.status_code, 200)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'processing')
+        self.assertIsNotNone(visit.started_at)
+        self.assertLessEqual(visit.checkin_distance_m, 500)
+        self.assertFalse(visit.checkin_remote)
+
+    def test_checkin_far_marks_remote(self):
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        # 北京坐标 → 距乌鲁木齐千里之外，仍可报到但标记远程
+        resp = self.client.post('/api/service-visits/%d/start/' % visit.id,
+                                {'latitude': 39.915, 'longitude': 116.404}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'processing')
+        self.assertTrue(visit.checkin_remote)
+        self.assertGreater(visit.checkin_distance_m, 500)
+        self.assertIn('远程报到', resp.data['message'])
+
+    def test_checkin_photo_upload(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        photo = SimpleUploadedFile('checkin.jpg', b'fakejpegbytes', content_type='image/jpeg')
+        resp = self.client.post('/api/service-visits/%d/checkin-photo/' % visit.id,
+                                {'photo': photo}, format='multipart')
+        self.assertEqual(resp.status_code, 200)
+        visit.refresh_from_db()
+        self.assertTrue(bool(visit.checkin_photo))
+
+    def test_checkin_photo_rejected_before_checkin(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        photo = SimpleUploadedFile('checkin.jpg', b'x', content_type='image/jpeg')
+        resp = self.client.post('/api/service-visits/%d/checkin-photo/' % visit.id,
+                                {'photo': photo}, format='multipart')
+        self.assertEqual(resp.status_code, 400)   # 未报到不能传报到照
+
+    def test_others_cannot_checkin(self):
+        other = make_user('ck_v2', 'volunteer', community=COMMUNITY, skills='医疗')
+        visit = self._visit()
+        self.client.force_authenticate(other)
+        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        self.assertIn(resp.status_code, (403, 404))
+
+
+class DeadlinePenaltyTests(APITestCase):
+    """DDL 罚分：超时未报到转已错过、扣 10 分不为负、双向通知；未到期/待派单不受影响。"""
+
+    def setUp(self):
+        self.admin = make_user('dl_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('dl_res', 'resident', community=COMMUNITY)
+        self.vol = make_user('dl_v1', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.stype = ServiceType.objects.create(name='健康检查', code='dl_health', required_skill='医疗')
+
+    def _visit(self, **kw):
+        base = dict(service_type=self.stype, resident=self.resident, volunteer=self.vol,
+                    scheduled_date=date.today(), status='assigned')
+        base.update(kw)
+        return ServiceVisit.objects.create(**base)
+
+    def test_overdue_punished(self):
+        self.vol.profile.points = 5
+        self.vol.profile.save(update_fields=['points'])
+        visit = self._visit(scheduled_date=date.today() - timedelta(days=1), scheduled_slot=9)
+        count = scheduler.punish_overdue()
+        self.assertEqual(count, 1)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'missed')
+        self.vol.profile.refresh_from_db()
+        self.assertEqual(self.vol.profile.points, 0)   # 5-10 → 不为负
+        self.assertTrue(self.vol.notifications.filter(title__contains='超时未报到').exists())
+        self.assertTrue(self.admin.notifications.filter(title__contains='超时未报到').exists())
+
+    def test_not_due_yet_untouched(self):
+        # 今天 19 点槽（DDL=20:00）与无槽（DDL=次日0点）在当天上午都不该被罚
+        early = datetime.combine(date.today(), dtime(8, 30))
+        v1 = self._visit(scheduled_slot=19)
+        v2 = self._visit(scheduled_slot=None)
+        self.assertEqual(scheduler.punish_overdue(now=early), 0)
+        v1.refresh_from_db(); v2.refresh_from_db()
+        self.assertEqual(v1.status, 'assigned')
+        self.assertEqual(v2.status, 'assigned')
+
+    def test_undispatched_single_task_untouched(self):
+        visit = self._visit(volunteer=None, scheduled_date=date.today() - timedelta(days=2))
+        self.assertEqual(scheduler.punish_overdue(), 0)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'assigned')   # 待派单不罚
+
+    def test_notify_undispatched_dedup(self):
+        visit = self._visit(volunteer=None)
+        ServiceVisit.objects.filter(id=visit.id).update(created_at=timezone.now() - timedelta(hours=25))
+        self.assertEqual(scheduler.notify_undispatched(), 1)
+        self.assertTrue(self.admin.notifications.filter(
+            title=scheduler.UNDISPATCHED_TITLE, related_id=visit.id).exists())
+        # 再跑一次不重复提醒
+        self.assertEqual(scheduler.notify_undispatched(), 0)
+
+    def test_run_maintenance_aggregates(self):
+        m = scheduler.run_maintenance()
+        self.assertEqual(set(m.keys()), {'auto_confirmed', 'punished', 'undispatched'})
+
+
+class RemindConfirmTests(APITestCase):
+    """催促确认：本人可催、24h 去重、非待确认不可催。"""
+
+    def setUp(self):
+        self.resident = make_user('rm_res', 'resident', community=COMMUNITY)
+        self.vol = make_user('rm_v1', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.stype = ServiceType.objects.create(name='助浴', code='rm_bath', required_skill='')
+        self.visit = ServiceVisit.objects.create(
+            service_type=self.stype, resident=self.resident, volunteer=self.vol,
+            scheduled_date=date.today(), status='pending_confirm')
+
+    def test_remind_then_dedup(self):
+        self.client.force_authenticate(self.vol)
+        r1 = self.client.post('/api/service-visits/%d/remind-confirm/' % self.visit.id, {}, format='json')
+        self.assertEqual(r1.status_code, 200)
+        self.assertTrue(self.resident.notifications.filter(title=scheduler.REMIND_TITLE).exists())
+        r2 = self.client.post('/api/service-visits/%d/remind-confirm/' % self.visit.id, {}, format='json')
+        self.assertEqual(r2.status_code, 400)   # 24h 内不可重复催
+
+    def test_remind_rejected_for_wrong_status(self):
+        ServiceVisit.objects.filter(id=self.visit.id).update(status='assigned')
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/remind-confirm/' % self.visit.id, {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_remind_rejected_for_resident(self):
+        self.client.force_authenticate(self.resident)
+        resp = self.client.post('/api/service-visits/%d/remind-confirm/' % self.visit.id, {}, format='json')
+        self.assertIn(resp.status_code, (403, 404))
+
+
+class AssignNotifyResidentTests(APITestCase):
+    """派单后通知居民：自动排班与管理员改派都要让居民知道。"""
+
+    def setUp(self):
+        self.admin = make_user('an_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('an_res', 'resident', community=COMMUNITY)
+        self.vol = make_user('an_v1', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.stype = ServiceType.objects.create(name='健康检查', code='an_health', required_skill='医疗')
+
+    def test_auto_assign_notifies_resident(self):
+        sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.stype, frequency='weekly',
+            preferred_slot=9, is_active=True)
+        visit = scheduler.create_visit_for(sub, date.today(), notify=True)
+        self.assertIsNotNone(visit.volunteer)
+        self.assertEqual(visit.scheduled_slot, 9)   # 订阅时段带入工单
+        self.assertTrue(self.resident.notifications.filter(title='服务已安排志愿者').exists())
+
+    def test_reassign_notifies_resident(self):
+        visit = ServiceVisit.objects.create(
+            service_type=self.stype, resident=self.resident, volunteer=None,
+            scheduled_date=date.today(), scheduled_slot=10, status='assigned')
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-visits/%d/reassign/' % visit.id,
+                                {'volunteer_id': self.vol.id}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(self.resident.notifications.filter(title='服务已安排志愿者').exists())
+
+
+class RequestOnceValidationTests(APITestCase):
+    """单次任务标准化时间校验：坏日期 400（回归原 500 隐患）、槽范围校验。"""
+
+    def setUp(self):
+        self.resident = make_user('rq_res', 'resident', community=COMMUNITY)
+        self.stype = ServiceType.objects.create(name='代购', code='rq_buy', required_skill='')
+
+    def _post(self, extra):
+        self.client.force_authenticate(self.resident)
+        payload = {'service_type': self.stype.id, 'address': '地址1号'}
+        payload.update(extra)
+        return self.client.post('/api/service-visits/request-once/', payload, format='json')
+
+    def test_bad_date_400(self):
+        self.assertEqual(self._post({'scheduled_date': 'not-a-date'}).status_code, 400)
+
+    def test_date_out_of_range_400(self):
+        far = (date.today() + timedelta(days=30)).isoformat()
+        self.assertEqual(self._post({'scheduled_date': far}).status_code, 400)
+
+    def test_bad_slot_400(self):
+        self.assertEqual(self._post({'scheduled_slot': 7}).status_code, 400)
+        self.assertEqual(self._post({'scheduled_slot': 20}).status_code, 400)
+
+    def test_valid_slot_saved(self):
+        resp = self._post({'scheduled_slot': 8,
+                           'scheduled_date': (date.today() + timedelta(days=1)).isoformat()})
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['visit']['scheduled_slot'], 8)
+        self.assertEqual(resp.data['visit']['slot_display'], '08:00-09:00')
+
+
+class HealthRecordRequiredTests(APITestCase):
+    """健康检查服务不能提交空记录；非健康服务不受影响。"""
+
+    def setUp(self):
+        self.resident = make_user('hr_res', 'resident', community=COMMUNITY)
+        self.vol = make_user('hr_v1', 'volunteer', community=COMMUNITY, skills='医疗 家政')
+        self.health_type = ServiceType.objects.create(
+            name='健康检查', code='hr_health', required_skill='医疗', needs_health_record=True)
+        self.plain_type = ServiceType.objects.create(
+            name='保洁', code='hr_clean', required_skill='家政', needs_health_record=False)
+
+    def _visit(self, stype):
+        return ServiceVisit.objects.create(
+            service_type=stype, resident=self.resident, volunteer=self.vol,
+            scheduled_date=date.today(), status='assigned')
+
+    def test_health_service_rejects_empty_vitals(self):
+        visit = self._visit(self.health_type)
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                                {'feedback': '做完了'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'assigned')
+
+    def test_health_service_rejects_partial_vitals(self):
+        visit = self._visit(self.health_type)
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                                {'systolic': 120, 'diastolic': 80}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_plain_service_allows_empty_vitals(self):
+        visit = self._visit(self.plain_type)
+        self.client.force_authenticate(self.vol)
+        resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
+                                {'feedback': 'ok'}, format='json')
+        self.assertEqual(resp.status_code, 200)
