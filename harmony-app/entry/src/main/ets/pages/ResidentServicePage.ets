@@ -50,7 +50,9 @@ struct ResidentServicePage {
   async loadAll() {
     this.loading = true
     try {
-      this.subscriptions = await Api.getList<ServiceSubscriptionItem>('/service-subscriptions/')
+      // 按 id 稳定排序：暂停/恢复刷新后卡片位置不跳动
+      this.subscriptions = (await Api.getList<ServiceSubscriptionItem>('/service-subscriptions/'))
+        .sort((a: ServiceSubscriptionItem, b: ServiceSubscriptionItem) => a.id - b.id)
       // 单次任务与周期上门分开展示：single=居民自建单次；recurring=周期计划产生
       this.singleVisits = await Api.getList<ServiceVisitItem>('/service-visits/?kind=single')
       this.visits = await Api.getList<ServiceVisitItem>('/service-visits/?kind=recurring')
@@ -328,6 +330,15 @@ struct ResidentServicePage {
           Text(item.note).fontSize(Theme.FS_SMALL).fontColor(Theme.TEXT_BODY).margin({ left: 6 }).layoutWeight(1)
         }.width('100%').margin({ top: 8 })
       }
+      if (item.status === 'assigned' && item.volunteer === null) {
+        // 单次任务提交后先由管理员在地图上派单
+        Row() {
+          Text('⏳').fontSize(14)
+          Text('等待管理员分配志愿者').fontSize(Theme.FS_SMALL).fontColor(Theme.WARN).margin({ left: 6 })
+        }
+        .width('100%').padding(10).margin({ top: 8 })
+        .backgroundColor('#FFF7ED').borderRadius(Theme.RADIUS_SM)
+      }
       if ((item.status === 'pending_confirm' || item.status === 'completed') && item.needs_health_record) {
         // 健康记录：分隔 + 徽章展示，更醒目易读（待确认时也展示，供居民核对后确认）
         Row() {
@@ -531,7 +542,7 @@ struct ResidentServicePage {
                 } else {
                   ForEach(this.singleVisits, (item: ServiceVisitItem) => {
                     this.VisitCard(item)
-                  }, (item: ServiceVisitItem) => `once-v-${item.id}-${item.status}`)
+                  }, (item: ServiceVisitItem) => `once-` + JSON.stringify(item))
                 }
               }.width('90%').margin({ top: 14, bottom: 20 }).alignItems(HorizontalAlign.Start)
             }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
@@ -546,7 +557,7 @@ struct ResidentServicePage {
                 } else {
                   ForEach(this.subscriptions, (item: ServiceSubscriptionItem) => {
                     this.SubscriptionCard(item)
-                  }, (item: ServiceSubscriptionItem) => `s-${item.id}`)
+                  }, (item: ServiceSubscriptionItem) => `s-` + JSON.stringify(item))
                 }
               }.width('90%').margin({ top: 14, bottom: 20 }).alignItems(HorizontalAlign.Start)
             }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
@@ -561,7 +572,7 @@ struct ResidentServicePage {
                 } else {
                   ForEach(this.visits, (item: ServiceVisitItem) => {
                     this.VisitCard(item)
-                  }, (item: ServiceVisitItem) => `v-${item.id}-${item.status}`)
+                  }, (item: ServiceVisitItem) => `v-` + JSON.stringify(item))
                 }
               }.width('90%').margin({ top: 14, bottom: 20 }).alignItems(HorizontalAlign.Start)
             }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)

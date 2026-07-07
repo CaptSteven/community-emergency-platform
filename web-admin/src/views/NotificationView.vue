@@ -103,9 +103,17 @@ const handleSearch = () => { pagination.page = 1; loadData() }
 const resetFilters = () => { filters.category = ''; filters.is_read = ''; handleSearch() }
 const handleSizeChange = size => { pagination.pageSize = size; pagination.page = 1; loadData() }
 const handlePageChange = page => { pagination.page = page; loadData() }
-const openDetail = row => { currentNotification.value = row; detailVisible.value = true; if (!row.is_read) markRead(row, false) }
-const markRead = async (row, showMessage = true) => { await request.post(`/notifications/${row.id}/mark_read/`); row.is_read = true; await loadUnreadCount(); if (showMessage) ElMessage.success('已标记为已读') }
-const markAllRead = async () => { await request.post('/notifications/mark_all_read/'); ElMessage.success('已全部标记为已读'); await loadData() }
+// 管理端是审计视角：打开详情不代为标已读——已读状态属于收件人本人（后端对非本人 mark_read 返回 403）
+const openDetail = row => { currentNotification.value = row; detailVisible.value = true }
+const markRead = async (row, showMessage = true) => {
+  try {
+    await request.post(`/notifications/${row.id}/mark_read/`)
+    row.is_read = true
+    await loadUnreadCount()
+    if (showMessage) ElMessage.success('已标记为已读')
+  } catch (e) { /* 拦截器提示（非本人消息会被后端拒绝） */ }
+}
+const markAllRead = async () => { await request.post('/notifications/mark_all_read/'); ElMessage.success('已将发给我的消息全部标记为已读'); await loadData() }
 const deleteNotification = async row => { await ElMessageBox.confirm(`确定要删除消息「${row.title}」吗？`, '提示', { type: 'warning' }); await request.delete(`/notifications/${row.id}/`); ElMessage.success('删除成功'); await loadData() }
 const categoryTagType = category => ({ service: 'success', system: 'info', warning: 'danger', help_request: 'warning', task: 'primary' }[category] || 'info')
 const relatedTypeText = type => ({ service_visit: '上门服务', service_subscription: '服务计划', user: '用户', warning: '灾害预警', help_request: '居民求助', task: '志愿者任务' }[type] || type)

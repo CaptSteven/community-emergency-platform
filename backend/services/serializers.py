@@ -64,13 +64,24 @@ class ServiceSubscriptionSerializer(serializers.ModelSerializer):
 
 class ServiceVisitSerializer(serializers.ModelSerializer):
     resident_name = serializers.CharField(source='resident.username', read_only=True)
-    volunteer_name = serializers.CharField(source='volunteer.username', read_only=True)
+    # volunteer 可为空（单次任务待派单）：source 链遇 None 会整键跳过，前端拿到 undefined，
+    # 故用 MethodField 恒定返回字符串
+    volunteer_name = serializers.SerializerMethodField()
     service_type_name = serializers.CharField(source='service_type.name', read_only=True)
     service_type_icon = serializers.CharField(source='service_type.icon', read_only=True)
     needs_health_record = serializers.BooleanField(
         source='service_type.needs_health_record', read_only=True
     )
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    status_display = serializers.SerializerMethodField()
+
+    def get_volunteer_name(self, obj):
+        return obj.volunteer.username if obj.volunteer_id else ''
+
+    def get_status_display(self, obj):
+        # 已排班但还没有志愿者 = 等管理员派单，展示为「待派单」而非误导性的「已排班」
+        if obj.status == 'assigned' and obj.volunteer_id is None:
+            return '待派单'
+        return obj.get_status_display()
 
     class Meta:
         model = ServiceVisit

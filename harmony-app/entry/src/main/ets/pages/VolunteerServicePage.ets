@@ -470,7 +470,7 @@ struct VolunteerServicePage {
               List() {
                 ForEach(this.todoList(), (item: ServiceVisitItem) => {
                   ListItem() { this.VisitCard(item) }
-                }, (item: ServiceVisitItem) => `todo-${item.id}-${item.status}`)
+                }, (item: ServiceVisitItem) => `todo-` + JSON.stringify(item))
               }.width('100%').height('100%').padding({ left: 16, right: 16, top: 14 }).scrollBar(BarState.Off)
             }
           }.tabBar(this.TabTitle(0, '待办', this.todoList().length))
@@ -483,7 +483,7 @@ struct VolunteerServicePage {
               List() {
                 ForEach(this.doneList(), (item: ServiceVisitItem) => {
                   ListItem() { this.VisitCard(item) }
-                }, (item: ServiceVisitItem) => `done-${item.id}-${item.status}`)
+                }, (item: ServiceVisitItem) => `done-` + JSON.stringify(item))
               }.width('100%').height('100%').padding({ left: 16, right: 16, top: 14 }).scrollBar(BarState.Off)
             }
           }.tabBar(this.TabTitle(1, '历史', this.doneList().length))

@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -46,6 +46,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def mark_read(self, request, pk=None):
         notification = self.get_object()
+        # 已读状态属于收件人本人：管理员在 Web 端浏览全量消息时，不得替他人清掉未读
+        if notification.recipient_id != request.user.id:
+            return Response({'message': '只能标记自己的消息'}, status=status.HTTP_403_FORBIDDEN)
         notification.is_read = True
         notification.save()
 
@@ -55,8 +58,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
-        queryset = self.get_queryset()
-        count = queryset.filter(is_read=False).update(is_read=True)
+        # 只标记发给自己的消息，避免管理员一键把全平台用户的未读清零
+        count = Notification.objects.filter(
+            recipient=request.user, is_read=False
+        ).update(is_read=True)
 
         return Response({
             'message': '全部标记为已读',
@@ -90,7 +95,8 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def unread_count(self, request):
-        count = self.get_queryset().filter(is_read=False).count()
+        # 未读数只统计发给自己的消息（管理员的全量视角仅用于浏览，不用于角标）
+        count = Notification.objects.filter(recipient=request.user, is_read=False).count()
 
         return Response({
             'unread_count': count

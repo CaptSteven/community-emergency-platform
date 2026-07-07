@@ -628,6 +628,9 @@ class SingleTaskAndPointsTests(APITestCase):
         self.assertIsNone(v.volunteer)             # 待管理员派单
         self.assertEqual(v.resident, self.resident)
         self.assertEqual(v.address, '水磨沟区临时地址')
+        # 无志愿者时序列化必须给出稳定的空串与「待派单」展示（曾因 SkipField 导致前端 undefined/已排班）
+        self.assertEqual(resp.data['visit']['volunteer_name'], '')
+        self.assertEqual(resp.data['visit']['status_display'], '待派单')
         # 管理员应收到通知
         self.assertTrue(self.admin.notifications.filter(category='service').exists())
 
