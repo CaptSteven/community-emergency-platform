@@ -66,6 +66,13 @@
                 <el-tag v-else size="small" type="info" effect="plain" round>无坐标</el-tag>
               </div>
             </div>
+            <el-button
+              class="detail-btn"
+              size="small"
+              text
+              type="primary"
+              @click.stop="openTaskDetail(t)"
+            >详情</el-button>
           </div>
         </div>
         <div v-else class="empty-state">
@@ -83,7 +90,7 @@
             ⚠️ 该任务无坐标，无法按距离排序，可直接选择志愿者分配。
           </div>
           <div v-if="sortedVolunteers.length" class="vol-list">
-            <div v-for="v in sortedVolunteers" :key="v.id" class="vol-item">
+            <div v-for="v in sortedVolunteers" :key="v.id" class="vol-item clickable" @click="openVolDetail(v)">
               <div class="vol-avatar">{{ (v.username || '?').slice(0, 1) }}</div>
               <div class="vol-body">
                 <div class="vol-name">
@@ -100,7 +107,7 @@
                 type="primary"
                 size="small"
                 :loading="assigningId === v.id"
-                @click="assign(v)"
+                @click.stop="assign(v)"
               >分配</el-button>
             </div>
           </div>
@@ -115,6 +122,65 @@
         </div>
       </div>
     </div>
+
+    <!-- 任务详情（点击地图红标 / 列表项打开） -->
+    <el-dialog v-model="taskDetailVisible" title="任务详情" width="460px">
+      <el-descriptions v-if="detailTask" :column="1" border>
+        <el-descriptions-item label="服务类型">{{ detailTask.service_type_icon }} {{ detailTask.service_type_name }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag type="danger" effect="dark" size="small">{{ detailTask.status_display }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="受益居民">{{ detailTask.resident_name }}</el-descriptions-item>
+        <el-descriptions-item label="联系电话">{{ residentInfo?.phone || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="所在社区">{{ residentInfo?.community || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="期望日期">{{ detailTask.scheduled_date || '不限' }}</el-descriptions-item>
+        <el-descriptions-item label="上门地址">{{ detailTask.address || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="需求说明">{{ detailTask.note || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="定位">
+          <span v-if="hasCoord(detailTask)">📍 {{ num(detailTask.latitude).toFixed(5) }}, {{ num(detailTask.longitude).toFixed(5) }}</span>
+          <span v-else class="muted">无坐标</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="提交时间">{{ formatTime(detailTask.created_at) }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="taskDetailVisible = false">关闭</el-button>
+        <el-button type="primary" @click="taskDetailVisible = false">按就近推荐派单 →</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 志愿者详情（点击地图蓝标 / 推荐列表项打开） -->
+    <el-dialog v-model="volDetailVisible" title="志愿者详情" width="460px">
+      <el-descriptions v-if="detailVol" :column="1" border>
+        <el-descriptions-item label="用户名">
+          {{ detailVol.username }}
+          <el-tag v-if="detailVol.is_verified" type="success" size="small" effect="dark" style="margin-left:8px">已认证</el-tag>
+          <el-tag v-else type="info" size="small" effect="plain" style="margin-left:8px">未认证</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="联系电话">{{ detailVol.phone || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="所在社区">{{ detailVol.community || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="技能标签">{{ detailVol.skills || '无技能标签' }}</el-descriptions-item>
+        <el-descriptions-item label="志愿积分">🏅 {{ detailVol.points || 0 }}</el-descriptions-item>
+        <el-descriptions-item label="在办工单">
+          <span v-if="volLoad != null">{{ volLoad }} 单（已排班/服务中）</span>
+          <span v-else class="muted">统计中…</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="本月取消">{{ detailVol.monthly_cancel_count ?? 0 }} 次</el-descriptions-item>
+        <el-descriptions-item label="距选中任务">
+          <span v-if="selectedTask && volDetailDistance != null" class="vol-dist">📏 {{ formatDistance(volDetailDistance) }}</span>
+          <span v-else class="muted">{{ selectedTask ? '任一方无坐标' : '未选中任务' }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="位置更新">{{ formatTime(detailVol.location_updated_at) }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="volDetailVisible = false">关闭</el-button>
+        <el-button
+          v-if="selectedTask && detailVol"
+          type="primary"
+          :loading="assigningId === detailVol.id"
+          @click="assignFromDetail"
+        >分配给「{{ selectedTask.service_type_name }} · {{ selectedTask.resident_name }}」</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -222,6 +288,56 @@ const selectTask = t => {
   }
 }
 
+// —— 详情弹窗（点击地图标注 / 列表项查看） ——
+const taskDetailVisible = ref(false)
+const volDetailVisible = ref(false)
+const detailTask = ref(null)
+const detailVol = ref(null)
+const residentInfo = ref(null) // 任务详情补充：居民联系方式
+const volLoad = ref(null) // 志愿者详情补充：在办工单数
+
+const formatTime = v => (v ? String(v).replace('T', ' ').slice(0, 19) : '—')
+
+// 点击任务红标：选中（保持派单流程）并打开详情，异步补居民联系方式
+const openTaskDetail = async t => {
+  selectTask(t)
+  detailTask.value = t
+  residentInfo.value = null
+  taskDetailVisible.value = true
+  try {
+    residentInfo.value = await request.get(`/users/${t.resident}/`)
+  } catch (e) { /* 联系方式拿不到就显示 — */ }
+}
+
+// 点击志愿者蓝标：打开详情，异步统计在办工单（已排班+服务中）
+const openVolDetail = async v => {
+  detailVol.value = v
+  volLoad.value = null
+  volDetailVisible.value = true
+  try {
+    const [a, p] = await Promise.all([
+      request.get('/service-visits/', { params: { volunteer: v.id, status: 'assigned', page_size: 1 } }),
+      request.get('/service-visits/', { params: { volunteer: v.id, status: 'processing', page_size: 1 } })
+    ])
+    volLoad.value = unwrapPaginated(a).total + unwrapPaginated(p).total
+  } catch (e) { volLoad.value = null }
+}
+
+// 志愿者详情里与「当前选中任务」的直线距离
+const volDetailDistance = computed(() => {
+  const t = selectedTask.value
+  const v = detailVol.value
+  if (!t || !v || !hasCoord(t) || !hasVolCoord(v)) return null
+  return haversine(num(t.latitude), num(t.longitude), num(v.current_latitude), num(v.current_longitude))
+})
+
+// 详情弹窗内直接派单给选中任务
+const assignFromDetail = async () => {
+  if (!detailVol.value) return
+  await assign(detailVol.value)
+  volDetailVisible.value = false
+}
+
 // —— 派单 ——
 const assign = async v => {
   if (!selectedTask.value) return
@@ -305,7 +421,7 @@ const renderMarkers = () => {
     const point = new BMap.Point(num(t.longitude), num(t.latitude))
     const active = selectedTask.value && selectedTask.value.id === t.id
     const marker = new BMap.Marker(point, { icon: makePinIcon(active ? '#F59E0B' : '#EF4444') })
-    marker.addEventListener('click', () => selectTask(t))
+    marker.addEventListener('click', () => openTaskDetail(t))
     map.addOverlay(marker)
     const label = new BMap.Label(t.service_type_name, { offset: new BMap.Size(14, -6) })
     label.setStyle({ border: 'none', background: 'rgba(15,23,42,.75)', color: '#fff', padding: '1px 6px', borderRadius: '6px', fontSize: '12px' })
@@ -321,6 +437,9 @@ const renderMarkers = () => {
     const label = new BMap.Label(v.username, { offset: new BMap.Size(14, -6) })
     label.setStyle({ border: 'none', background: 'rgba(37,99,235,.85)', color: '#fff', padding: '1px 6px', borderRadius: '6px', fontSize: '12px' })
     marker.setLabel(label)
+
+    // 点击蓝标查看志愿者详情（拖动派单不受影响）
+    marker.addEventListener('click', () => openVolDetail(v))
 
     // 拖动结束：找最近的任务红标，落在 200 米内则确认派单
     marker.addEventListener('dragend', e => {
@@ -444,6 +563,9 @@ onBeforeUnmount(() => {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .task-tags { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+.detail-btn { flex-shrink: 0; align-self: flex-start; }
+.vol-item.clickable { cursor: pointer; transition: all .18s ease; }
+.vol-item.clickable:hover { border-color: #93c5fd; background: #eff6ff; }
 
 /* 志愿者推荐 */
 .vol-panel { margin-top: 18px; padding-top: 16px; border-top: 1px dashed #e5e7eb; }
