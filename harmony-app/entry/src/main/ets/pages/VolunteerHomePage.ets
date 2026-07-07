@@ -1,5 +1,4 @@
 import router from '@ohos.router'
-import promptAction from '@ohos.promptAction'
 import { Api, Session } from '../common/Api'
 import { LocationService } from '../common/LocationService'
 import { common } from '@kit.AbilityKit'
@@ -153,7 +152,7 @@ struct VolunteerHomePage {
           .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
           .onClick(() => { router.pushUrl({ url: 'pages/VolunteerServicePage' }) })
 
-          // 我的积分（功能占位）
+          // 我的积分 → 积分与排行榜页
           Column() {
             Text('⭐')
               .fontSize(26).width(50).height(50).textAlign(TextAlign.Center)
@@ -164,7 +163,7 @@ struct VolunteerHomePage {
           .layoutWeight(1).padding({ top: 16, bottom: 16 }).alignItems(HorizontalAlign.Center)
           .backgroundColor(Theme.CARD).borderRadius(Theme.RADIUS)
           .shadow({ radius: 14, color: '#14000000', offsetX: 0, offsetY: 4 })
-          .onClick(() => { promptAction.showToast({ message: '积分与时长排行榜即将上线 ⭐' }) })
+          .onClick(() => { router.pushUrl({ url: 'pages/VolunteerPointsPage' }) })
         }
         .width('90%')
 

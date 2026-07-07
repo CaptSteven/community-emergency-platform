@@ -248,6 +248,16 @@ export interface MyStats {
   completed_count: number
 }
 
+// 志愿积分排行榜条目
+export interface LeaderboardItem {
+  rank: number
+  volunteer: string
+  points: number
+  total_minutes: number
+  week_minutes: number
+  completed_count: number
+}
+
 // 居民申请周期服务载荷
 export interface CreateSubscriptionPayload {
   service_type: number

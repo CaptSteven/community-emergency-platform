@@ -8,6 +8,7 @@
     "pages/RegisterPage",
     "pages/RouteNaviPage",
     "pages/VolunteerServicePage",
-    "pages/ResidentServicePage"
+    "pages/ResidentServicePage",
+    "pages/VolunteerPointsPage"
   ]
 }
