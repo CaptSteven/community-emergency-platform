@@ -10,7 +10,8 @@ struct ResidentServicePage {
   @State subscriptions: ServiceSubscriptionItem[] = []
   @State visits: ServiceVisitItem[] = []            // 周期计划产生的上门记录（kind=recurring）
   @State singleVisits: ServiceVisitItem[] = []      // 我的单次任务（kind=single）
-  @State types: ServiceTypeItem[] = []
+  @State singleTypes: ServiceTypeItem[] = []       // 可用于单次任务的服务类别
+  @State recurringTypes: ServiceTypeItem[] = []    // 可用于周期计划的服务类别
   @State loading: boolean = false
   // 提交单次任务表单
   @State showOnce: boolean = false
@@ -30,8 +31,8 @@ struct ResidentServicePage {
   @State editingActive: boolean = true
 
   private weekdayLabels: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-  private freqKeys: string[] = ['weekly', 'biweekly', 'monthly']
-  private freqLabels: string[] = ['每周', '每两周', '每月']
+  private freqKeys: string[] = ['daily', 'weekly', 'biweekly', 'monthly']
+  private freqLabels: string[] = ['每日', '每周', '每两周', '每月']
 
   onPageShow() {
     this.loadAll()
@@ -58,9 +59,11 @@ struct ResidentServicePage {
 
   async loadTypes() {
     try {
-      this.types = await Api.getList<ServiceTypeItem>('/service-types/')
-      if (this.types.length > 0) {
-        this.selectedTypeId = this.types[0].id
+      // 按适用方式分流：单次表单只列单次类，周期表单只列周期类（both 两边都出现）
+      this.recurringTypes = await Api.getList<ServiceTypeItem>('/service-types/?for=recurring')
+      this.singleTypes = await Api.getList<ServiceTypeItem>('/service-types/?for=single')
+      if (this.recurringTypes.length > 0) {
+        this.selectedTypeId = this.recurringTypes[0].id
       }
     } catch (err) {
       // 静默
@@ -75,8 +78,8 @@ struct ResidentServicePage {
     this.preferredTime = ''
     this.note = ''
     this.serviceAddress = ''
-    if (this.types.length > 0) {
-      this.selectedTypeId = this.types[0].id
+    if (this.recurringTypes.length > 0) {
+      this.selectedTypeId = this.recurringTypes[0].id
     }
     this.showSubscribe = true
   }
@@ -86,8 +89,8 @@ struct ResidentServicePage {
     this.onceNote = ''
     this.onceAddress = this.serviceAddress === '' ? Session.address : this.serviceAddress
     this.onceDate = ''
-    if (this.types.length > 0) {
-      this.onceTypeId = this.types[0].id
+    if (this.singleTypes.length > 0) {
+      this.onceTypeId = this.singleTypes[0].id
     }
     this.showOnce = true
   }
@@ -286,7 +289,7 @@ struct ResidentServicePage {
 
       Text('服务类型').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SUCCESS).margin({ bottom: 8 })
       Flex({ wrap: FlexWrap.Wrap }) {
-        ForEach(this.types, (t: ServiceTypeItem) => {
+        ForEach(this.singleTypes, (t: ServiceTypeItem) => {
           Text(`${t.icon} ${t.name}`)
             .fontSize(13).fontColor(this.onceTypeId === t.id ? Color.White : Theme.TEXT_BODY)
             .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })
@@ -333,7 +336,7 @@ struct ResidentServicePage {
 
       Text('服务类型').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.PRIMARY).margin({ bottom: 8 })
       Flex({ wrap: FlexWrap.Wrap }) {
-        ForEach(this.types, (t: ServiceTypeItem) => {
+        ForEach(this.recurringTypes, (t: ServiceTypeItem) => {
           Text(`${t.icon} ${t.name}`)
             .fontSize(13).fontColor(this.selectedTypeId === t.id ? Color.White : Theme.TEXT_BODY)
             .padding({ left: 12, right: 12, top: 7, bottom: 7 }).margin({ right: 8, bottom: 8 })

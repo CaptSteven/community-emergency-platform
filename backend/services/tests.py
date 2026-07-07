@@ -622,3 +622,48 @@ class SingleTaskAndPointsTests(APITestCase):
         self.client.force_authenticate(self.resident)
         resp = self.client.post('/api/service-subscriptions/%d/build-group/' % sub.id, {}, format='json')
         self.assertEqual(resp.status_code, 403)
+
+
+class ServiceModeAndDailyTests(APITestCase):
+    """服务适用方式(单次/周期/通用)过滤 + 每日周期。"""
+
+    def setUp(self):
+        self.admin = make_user('mode_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('mode_res', 'resident', community=COMMUNITY)
+        self.t_single = ServiceType.objects.create(name='维修', code='repair_t', service_mode='single')
+        self.t_recur = ServiceType.objects.create(name='送餐', code='meal_t', service_mode='recurring', default_frequency='daily')
+        self.t_both = ServiceType.objects.create(name='代购', code='grocery_t', service_mode='both')
+        self.t_inactive = ServiceType.objects.create(name='停用单次', code='off_t', service_mode='single', is_active=False)
+
+    def test_for_single_returns_single_and_both_active(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get('/api/service-types/?for=single')
+        codes = {r['code'] for r in (resp.data if isinstance(resp.data, list) else resp.data['results'])}
+        self.assertIn('repair_t', codes)
+        self.assertIn('grocery_t', codes)       # both 也出现在单次
+        self.assertNotIn('meal_t', codes)        # recurring 不出现
+        self.assertNotIn('off_t', codes)         # 停用的不出现
+
+    def test_for_recurring_returns_recurring_and_both(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get('/api/service-types/?for=recurring')
+        codes = {r['code'] for r in (resp.data if isinstance(resp.data, list) else resp.data['results'])}
+        self.assertIn('meal_t', codes)
+        self.assertIn('grocery_t', codes)
+        self.assertNotIn('repair_t', codes)
+
+    def test_service_mode_in_serializer(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get('/api/service-types/?for=single')
+        rows = resp.data if isinstance(resp.data, list) else resp.data['results']
+        row = next(r for r in rows if r['code'] == 'repair_t')
+        self.assertEqual(row['service_mode'], 'single')
+        self.assertEqual(row['service_mode_display'], '单次')
+
+    def test_daily_frequency_due_after_one_day(self):
+        sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.t_recur, frequency='daily', is_active=True)
+        scheduler.generate_due_visits(today=date.today() - timedelta(days=1))
+        ServiceVisit.objects.filter(subscription=sub).update(status='completed')
+        again = scheduler.generate_due_visits(today=date.today())
+        self.assertEqual(len(again), 1)   # 每日：隔天即到期

@@ -38,6 +38,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="default_frequency_display" label="默认周期" width="100" />
+        <el-table-column label="适用方式" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="modeTag(row.service_mode)" effect="plain" size="small">{{ modeText(row.service_mode) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="健康记录" width="100" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.needs_health_record" type="warning" effect="dark" size="small">需录入</el-tag>
@@ -100,6 +105,11 @@
             <el-option v-for="f in FREQ" :key="f.value" :label="f.label" :value="f.value" />
           </el-select>
         </el-form-item>
+        <el-form-item label="适用方式">
+          <el-select v-model="form.service_mode" style="width: 100%">
+            <el-option v-for="m in MODES" :key="m.value" :label="m.label" :value="m.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="预计时长">
           <el-input-number v-model="form.duration_minutes" :min="5" :max="480" :step="5" /> 分钟
         </el-form-item>
@@ -128,10 +138,19 @@ import request from '../api/request'
 import { buildPageParams, unwrapPaginated } from '../utils/pagination'
 
 const FREQ = [
+  { value: 'daily', label: '每日' },
   { value: 'weekly', label: '每周' },
   { value: 'biweekly', label: '每两周' },
   { value: 'monthly', label: '每月' }
 ]
+
+const MODES = [
+  { value: 'both', label: '通用（单次+周期）' },
+  { value: 'single', label: '仅单次任务' },
+  { value: 'recurring', label: '仅周期计划' }
+]
+const modeTag = m => ({ single: 'warning', recurring: 'success', both: 'info' }[m] || 'info')
+const modeText = m => ({ single: '单次', recurring: '周期', both: '通用' }[m] || m)
 
 const loading = ref(false)
 const saving = ref(false)
@@ -145,7 +164,7 @@ const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 
 const blank = () => ({
   name: '', code: '', category: '', icon: '🛎️', required_skill: '',
-  default_frequency: 'weekly', duration_minutes: 30, description: '',
+  default_frequency: 'weekly', service_mode: 'both', duration_minutes: 30, description: '',
   needs_health_record: false, is_active: true
 })
 const form = reactive(blank())
@@ -174,6 +193,7 @@ const openEdit = row => {
   Object.assign(form, {
     name: row.name, code: row.code, category: row.category || '', icon: row.icon || '🛎️',
     required_skill: row.required_skill || '', default_frequency: row.default_frequency,
+    service_mode: row.service_mode || 'both',
     duration_minutes: row.duration_minutes, description: row.description || '',
     needs_health_record: row.needs_health_record, is_active: row.is_active
   })

@@ -3,9 +3,17 @@ from django.contrib.auth.models import User
 
 
 FREQUENCY_CHOICES = (
+    ('daily', '每日'),
     ('weekly', '每周'),
     ('biweekly', '每两周'),
     ('monthly', '每月'),
+)
+
+# 服务适用方式：单次任务 / 周期计划 / 两者皆可
+SERVICE_MODE_CHOICES = (
+    ('single', '单次'),
+    ('recurring', '周期'),
+    ('both', '通用'),
 )
 
 WEEKDAY_CHOICES = (
@@ -33,6 +41,10 @@ class ServiceType(models.Model):
     )
     default_frequency = models.CharField(
         max_length=20, choices=FREQUENCY_CHOICES, default='weekly', verbose_name='默认服务周期'
+    )
+    service_mode = models.CharField(
+        max_length=20, choices=SERVICE_MODE_CHOICES, default='both', verbose_name='适用方式',
+        help_text='single=只用于单次任务；recurring=只用于周期计划；both=两者皆可'
     )
     duration_minutes = models.IntegerField(default=30, verbose_name='预计时长(分钟)')
     needs_health_record = models.BooleanField(default=False, verbose_name='是否录入健康记录')

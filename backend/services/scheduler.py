@@ -15,7 +15,7 @@ from django.contrib.auth.models import User
 from .models import ServiceSubscription, ServiceVisit
 
 
-FREQ_DAYS = {'weekly': 7, 'biweekly': 14, 'monthly': 30}
+FREQ_DAYS = {'daily': 1, 'weekly': 7, 'biweekly': 14, 'monthly': 30}
 
 
 def haversine_km(lat1, lng1, lat2, lng2):

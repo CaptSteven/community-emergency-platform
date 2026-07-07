@@ -7,12 +7,16 @@ class ServiceTypeSerializer(serializers.ModelSerializer):
     default_frequency_display = serializers.CharField(
         source='get_default_frequency_display', read_only=True
     )
+    service_mode_display = serializers.CharField(
+        source='get_service_mode_display', read_only=True
+    )
 
     class Meta:
         model = ServiceType
         fields = [
             'id', 'name', 'code', 'category', 'description', 'required_skill',
-            'default_frequency', 'default_frequency_display', 'duration_minutes',
+            'default_frequency', 'default_frequency_display',
+            'service_mode', 'service_mode_display', 'duration_minutes',
             'needs_health_record', 'icon', 'is_active', 'created_at',
         ]
         read_only_fields = ['created_at']

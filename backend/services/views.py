@@ -45,8 +45,16 @@ class ServiceTypeViewSet(viewsets.ModelViewSet):
     queryset = ServiceType.objects.all()
     serializer_class = ServiceTypeSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['is_active', 'category', 'default_frequency']
+    filterset_fields = ['is_active', 'category', 'default_frequency', 'service_mode']
     search_fields = ['name', 'code', 'category']
+
+    def get_queryset(self):
+        qs = ServiceType.objects.all()
+        # ?for=single|recurring：按适用方式过滤（both 两边都出现），供 App 两个申请表单分流
+        want = self.request.query_params.get('for')
+        if want in ('single', 'recurring'):
+            qs = qs.filter(is_active=True, service_mode__in=[want, 'both'])
+        return qs
 
     def _require_admin(self):
         if not is_admin(self.request.user):
