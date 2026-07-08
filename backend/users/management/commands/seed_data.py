@@ -26,12 +26,11 @@ class Command(BaseCommand):
 
     def wipe(self):
         """清空演示数据：业务表全清，账号只保留超级管理员。"""
-        from notifications.models import Notification, DeviceToken
+        from notifications.models import Notification
         from tasks.models import TaskCancellation, VolunteerTask
         from requests_app.models import HelpRequest
 
         Notification.objects.all().delete()
-        DeviceToken.objects.all().delete()
         TaskCancellation.objects.all().delete()
         VolunteerTask.objects.all().delete()
         HelpRequest.objects.all().delete()
@@ -39,7 +38,12 @@ class Command(BaseCommand):
         ServiceSubscription.objects.all().delete()
         VolunteerApplication.objects.all().delete()
         removed, _ = User.objects.filter(is_superuser=False).delete()
-        self.stdout.write(self.style.WARNING(f'已清空演示数据（删除非超管账号及关联记录 {removed} 条）'))
+        # 同步清理上传的照片文件（工单凭证 / 志愿者证件），避免残留占盘
+        import shutil
+        from django.conf import settings
+        for sub in ('service_visits', 'volunteer_apps'):
+            shutil.rmtree(settings.MEDIA_ROOT / sub, ignore_errors=True)
+        self.stdout.write(self.style.WARNING(f'已清空演示数据（删除非超管账号及关联记录 {removed} 条，含上传照片）'))
 
     def create_user(self, username, password, role, phone='', community=COMMUNITY, address='', longitude=None, latitude=None, skills=''):
         user, created = User.objects.get_or_create(username=username)
