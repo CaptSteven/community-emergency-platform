@@ -54,7 +54,7 @@
             </div>
             <div v-else class="rot-empty">
               <span class="rot-empty-icon">🔁</span>
-              <span class="muted">未编排，将按负载自动派单</span>
+              <span class="muted">未编排，编排循环组后才可排班</span>
             </div>
           </template>
         </el-table-column>
@@ -74,7 +74,12 @@
         </el-table-column>
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" plain @click="generateNow(row)">立即排班</el-button>
+            <!-- 循环组为空时禁用，防止误触排班（后端同样有校验兜底） -->
+            <el-tooltip content="请先「一键编排」或「手动编排」循环组" :disabled="hasGroup(row)" placement="top">
+              <span class="gen-btn-wrap">
+                <el-button size="small" type="primary" plain :disabled="!hasGroup(row)" @click="generateNow(row)">立即排班</el-button>
+              </span>
+            </el-tooltip>
             <!-- 编排循环组：按技能 + 距离智能筛选 -->
             <el-button size="small" type="success" plain :loading="row._building" @click="buildGroup(row)">
               {{ row.rotation_group && row.rotation_group.length ? '一键重排' : '一键编排' }}
@@ -346,7 +351,11 @@ const buildGroup = async row => {
   } catch (e) { /* 拦截器提示 */ } finally { row._building = false }
 }
 
+// 循环组里至少有一名志愿者才允许「立即排班」
+const hasGroup = row => !!(row.rotation_group && row.rotation_group.length)
+
 const generateNow = async row => {
+  if (!hasGroup(row)) return
   try {
     const res = await request.post(`/service-subscriptions/${row.id}/generate-now/`)
     ElMessage.success(res.message || '已生成工单')
@@ -359,6 +368,9 @@ onMounted(() => { loadData(); loadRefs() })
 
 <style scoped>
 .header-actions { display: flex; gap: 10px; }
+
+/* tooltip 包裹层会打断 el-button 相邻选择器，手动补按钮间距 */
+.gen-btn-wrap { margin-right: 12px; display: inline-block; }
 
 /* 服务单元格：大 emoji + 名称 */
 .svc-cell { display: flex; align-items: center; gap: 10px; }

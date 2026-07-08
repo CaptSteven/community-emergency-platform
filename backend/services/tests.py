@@ -797,6 +797,34 @@ class ManualRotationGroupTests(APITestCase):
         self.assertEqual(resp.status_code, 403)
 
 
+class GenerateNowGuardTests(APITestCase):
+    """立即排班守卫：循环组为空必须 400 且不生成工单；编排后正常排班。"""
+
+    def setUp(self):
+        self.admin = make_user('gn_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('gn_res', 'resident', community=COMMUNITY)
+        self.stype = ServiceType.objects.create(name='健康检查', code='gn_health', required_skill='医疗')
+        self.vol = make_user('gn_v1', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.stype, frequency='weekly', is_active=True)
+
+    def test_generate_now_requires_rotation_group(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-subscriptions/%d/generate-now/' % self.sub.id)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('循环组', resp.data['message'])
+        self.assertFalse(ServiceVisit.objects.filter(subscription=self.sub).exists())
+
+    def test_generate_now_ok_with_rotation_group(self):
+        self.sub.rotation_volunteers = [self.vol.id]
+        self.sub.save(update_fields=['rotation_volunteers'])
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-subscriptions/%d/generate-now/' % self.sub.id)
+        self.assertEqual(resp.status_code, 200)
+        visit = ServiceVisit.objects.get(subscription=self.sub)
+        self.assertEqual(visit.volunteer, self.vol)
+
+
 class CheckinTests(APITestCase):
     """到场报到：定位必填、距离判定、远程标记、照片补传。"""
 

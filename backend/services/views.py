@@ -193,6 +193,11 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
         if not is_admin(request.user):
             return Response({'message': '只有管理员可以生成工单'}, status=status.HTTP_403_FORBIDDEN)
         sub = self.get_object()
+        if not sub.rotation_volunteers:
+            return Response(
+                {'message': '该计划还未编排志愿者循环组，请先「一键编排」或「手动编排」后再排班。'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if scheduler.has_open_visit(sub):
             return Response({'message': '该计划已有进行中的工单'}, status=status.HTTP_400_BAD_REQUEST)
         visit = scheduler.create_visit_for(sub, date.today())
