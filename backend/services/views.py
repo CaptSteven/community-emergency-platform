@@ -255,7 +255,7 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         # ?upcoming=1 只看今天及以后、尚未完成（已排班/服务中）的工单
         if self.request.query_params.get('upcoming') in ('1', 'true'):
             today = timezone.now().date()
-            qs = qs.filter(scheduled_date__gte=today, status__in=['assigned', 'processing'])
+            qs = qs.filter(scheduled_date__gte=today, status__in=['assigned', 'checked_in', 'processing'])
         # ?kind=single 单次任务(无订阅) / recurring 周期计划产生
         kind = self.request.query_params.get('kind')
         if kind == 'single':
@@ -355,15 +355,16 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'])
-    def start(self, request, pk=None):
-        """志愿者到场报到：上报定位（必须）→ 已排班 -> 服务中。
-        与服务地址距离 ≤500m 正常报到；超距仍可报到但记录距离并标记「远程报到」供管理员审核。"""
+    def checkin(self, request, pk=None):
+        """第一步·志愿者到场报到：拍照+上报定位 → 已排班 -> 已报到。
+        与服务地址距离 ≤500m 正常报到；超距仍可报到但记录距离、标记「远程报到」，
+        并向志愿者发送数据异常提醒（管理员在 Web 端可见红标）。"""
         visit = self.get_object()
         profile = _profile(request.user)
         if profile is None or profile.role != 'volunteer' or visit.volunteer_id != request.user.id:
-            return Response({'message': '只能开始分配给自己的服务'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'message': '只能报到分配给自己的服务'}, status=status.HTTP_403_FORBIDDEN)
         if visit.status != 'assigned':
-            return Response({'message': '当前状态不可开始'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': '当前状态不可报到'}, status=status.HTTP_400_BAD_REQUEST)
 
         body = _body(request)
         try:
@@ -392,14 +393,23 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if 'photo' in request.FILES:
             visit.checkin_photo = request.FILES['photo']
 
-        visit.status = 'processing'
-        visit.started_at = timezone.now()
+        visit.status = 'checked_in'
+        visit.checkin_at = timezone.now()
         visit.save()
 
         if visit.checkin_remote:
-            msg = f'已远程报到（距服务地址约 {visit.checkin_distance_m} 米），该记录管理员可见'
+            # 距离异常：提醒志愿者本人（后台已留痕，管理员可见）
+            create_notification(
+                recipient=request.user,
+                title='报到位置距离异常',
+                content=f'你在「{visit.service_type.name}」（{visit.resident.username}）的报到位置'
+                        f'距服务地址约 {visit.checkin_distance_m} 米，后台数据异常，该记录管理员可见。'
+                        f'如为定位漂移请忽略，否则请到达居民位置后再开始服务。',
+                category='service', related_type='service_visit', related_id=visit.id,
+            )
+            msg = f'已远程报到（距服务地址约 {visit.checkin_distance_m} 米），后台数据异常已提醒，管理员可见'
         else:
-            msg = '报到成功，服务开始'
+            msg = '报到成功，可以开始任务'
         return Response({'message': msg, 'visit': ServiceVisitSerializer(visit).data})
 
     @action(detail=True, methods=['post'], url_path='checkin-photo')
@@ -409,13 +419,29 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         profile = _profile(request.user)
         if profile is None or profile.role != 'volunteer' or visit.volunteer_id != request.user.id:
             return Response({'message': '只能上传自己工单的报到照片'}, status=status.HTTP_403_FORBIDDEN)
-        if visit.status != 'processing':
+        if visit.status not in ('checked_in', 'processing'):
             return Response({'message': '当前状态不可上传报到照片'}, status=status.HTTP_400_BAD_REQUEST)
         if 'photo' not in request.FILES:
             return Response({'message': '缺少照片文件'}, status=status.HTTP_400_BAD_REQUEST)
         visit.checkin_photo = request.FILES['photo']
         visit.save(update_fields=['checkin_photo'])
         return Response({'message': '报到照片已上传'})
+
+    @action(detail=True, methods=['post'])
+    def start(self, request, pk=None):
+        """第二步·开始任务：必须先到场报到（已报到 -> 服务中）。"""
+        visit = self.get_object()
+        profile = _profile(request.user)
+        if profile is None or profile.role != 'volunteer' or visit.volunteer_id != request.user.id:
+            return Response({'message': '只能开始分配给自己的服务'}, status=status.HTTP_403_FORBIDDEN)
+        if visit.status == 'assigned':
+            return Response({'message': '请先到场报到（拍照+定位）后再开始任务'}, status=status.HTTP_400_BAD_REQUEST)
+        if visit.status != 'checked_in':
+            return Response({'message': '当前状态不可开始'}, status=status.HTTP_400_BAD_REQUEST)
+        visit.status = 'processing'
+        visit.started_at = timezone.now()
+        visit.save(update_fields=['status', 'started_at'])
+        return Response({'message': '任务已开始', 'visit': ServiceVisitSerializer(visit).data})
 
     @action(detail=True, methods=['post'], url_path='remind-confirm')
     def remind_confirm(self, request, pk=None):
@@ -449,7 +475,14 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         profile = _profile(request.user)
         if profile is None or profile.role != 'volunteer' or visit.volunteer_id != request.user.id:
             return Response({'message': '只能完成分配给自己的服务'}, status=status.HTTP_403_FORBIDDEN)
-        if visit.status not in ['assigned', 'processing']:
+        # 三段流程强约束：未报到不能完成，未开始不能完成
+        if visit.status == 'assigned':
+            return Response({'message': '请先到场报到（拍照+定位），再开始任务后才能提交完成'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if visit.status == 'checked_in':
+            return Response({'message': '请先点击「开始任务」，任务进行后才能提交完成'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if visit.status != 'processing':
             return Response({'message': '当前状态不可完成'}, status=status.HTTP_400_BAD_REQUEST)
 
         body = _body(request)
@@ -551,7 +584,7 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
 
             if visit.volunteer_id != request.user.id:
                 return Response({'message': '不能取消其他志愿者的服务'}, status=status.HTTP_403_FORBIDDEN)
-            if visit.status not in ['assigned', 'processing']:
+            if visit.status not in ['assigned', 'checked_in', 'processing']:
                 return Response({'message': '当前状态不可取消'}, status=status.HTTP_400_BAD_REQUEST)
 
             TaskCancellation.objects.create(
@@ -621,7 +654,7 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
         if not is_admin(request.user):
             return Response({'message': '只有管理员可以改派'}, status=status.HTTP_403_FORBIDDEN)
         visit = self.get_object()
-        if visit.status not in ['assigned', 'processing']:
+        if visit.status not in ['assigned', 'checked_in', 'processing']:
             return Response({'message': '当前状态不可改派'}, status=status.HTTP_400_BAD_REQUEST)
         volunteer_id = _body(request).get('volunteer_id')
         try:

@@ -76,7 +76,7 @@ struct VolunteerServicePage {
   // 待办：已排班 / 服务中 / 待居民确认
   todoList(): ServiceVisitItem[] {
     return this.visits.filter((v: ServiceVisitItem) =>
-      v.status === 'assigned' || v.status === 'processing' || v.status === 'pending_confirm')
+      v.status === 'assigned' || v.status === 'checked_in' || v.status === 'processing' || v.status === 'pending_confirm')
   }
 
   // 历史：已完成 / 已取消 / 已错过
@@ -127,26 +127,24 @@ struct VolunteerServicePage {
     return new Date().getTime() >= ddl.getTime()
   }
 
-  // 实际报到：定位 JSON 报到；photoUri 非空则报到成功后补传报到照（失败不影响报到）
+  // 实际报到：POST checkin（定位）成功后上传现场照片（照片为报到必备材料）
   async doCheckin(item: ServiceVisitItem, lat: number, lng: number, photoUri: string) {
     try {
       let payload: CheckinPayload = { latitude: lat, longitude: lng }
-      let resp = await Api.post<CheckinPayload>(`/service-visits/${item.id}/start/`, payload) as Record<string, Object>
+      let resp = await Api.post<CheckinPayload>(`/service-visits/${item.id}/checkin/`, payload) as Record<string, Object>
       let msg: string = resp['message'] !== undefined ? resp['message'] as string : '报到成功'
       promptAction.showToast({ message: msg, duration: 3000 })
-      if (photoUri !== '') {
-        try {
-          let ctx = getContext(this) as common.UIAbilityContext
-          let name: string = 'checkin_' + item.id + '.jpg'
-          let src = fs.openSync(photoUri, fs.OpenMode.READ_ONLY)
-          let dst = fs.openSync(ctx.cacheDir + '/' + name, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
-          fs.copyFileSync(src.fd, dst.fd)
-          fs.closeSync(src)
-          fs.closeSync(dst)
-          await Api.uploadFile(`/service-visits/${item.id}/checkin-photo/`, 'internal://cache/' + name, 'photo')
-        } catch (err) {
-          promptAction.showToast({ message: '报到成功，但照片上传失败，可稍后联系管理员补充' })
-        }
+      try {
+        let ctx = getContext(this) as common.UIAbilityContext
+        let name: string = 'checkin_' + item.id + '.jpg'
+        let src = fs.openSync(photoUri, fs.OpenMode.READ_ONLY)
+        let dst = fs.openSync(ctx.cacheDir + '/' + name, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
+        fs.copyFileSync(src.fd, dst.fd)
+        fs.closeSync(src)
+        fs.closeSync(dst)
+        await Api.uploadFile(`/service-visits/${item.id}/checkin-photo/`, 'internal://cache/' + name, 'photo')
+      } catch (err) {
+        promptAction.showToast({ message: '报到已记录，但照片上传失败，请联系管理员补充' })
       }
       this.loadVisits()
     } catch (err) {
@@ -154,38 +152,9 @@ struct VolunteerServicePage {
     }
   }
 
-  // 到场报到：定位必须；拍照留证可选，相册为空时回退询问，绝不静默失败
+  // 第一步·到场报到：必须拍摄/选择现场照片 + 上报定位，缺一不可
   async checkinVisit(item: ServiceVisitItem) {
-    let lat: number = 0
-    let lng: number = 0
-    try {
-      let loc: LocationResult = await LocationService.getCurrentLocation()
-      lat = loc.latitude
-      lng = loc.longitude
-    } catch (err) {
-      promptAction.showToast({ message: '报到必须开启定位，请打开定位后重试' })
-      return
-    }
-    let choice: number = -1
-    try {
-      let res = await promptAction.showActionMenu({
-        title: '到场报到（将上报当前位置）',
-        buttons: [
-          { text: '📍 直接报到', color: '#16A34A' },
-          { text: '📷 拍照留证并报到', color: '#2563EB' }
-        ]
-      })
-      choice = res.index
-    } catch (err) {
-      return  // 用户取消
-    }
-    if (choice === 0) {
-      await this.doCheckin(item, lat, lng, '')
-      return
-    }
-    if (choice !== 1) {
-      return
-    }
+    // 1) 现场照片（必须）
     let picked: string = ''
     try {
       let photoPicker = new picker.PhotoViewPicker()
@@ -197,24 +166,34 @@ struct VolunteerServicePage {
       // 选择器异常按未选处理
     }
     if (picked === '') {
-      try {
-        let r = await promptAction.showDialog({
-          title: '未选择照片',
-          message: '没有选到照片（相册可能为空）。是否不留照片、直接完成报到？',
-          buttons: [
-            { text: '再想想', color: '#64748B' },
-            { text: '直接报到', color: '#16A34A' }
-          ]
-        })
-        if (r.index === 1) {
-          await this.doCheckin(item, lat, lng, '')
-        }
-      } catch (err) {
-        // 关闭弹窗即放弃
-      }
+      promptAction.showToast({ message: '报到必须拍摄现场照片（相册左上角可拍照），未选照片无法报到', duration: 3000 })
       return
     }
+    // 2) 定位（必须）
+    let lat: number = 0
+    let lng: number = 0
+    try {
+      let loc: LocationResult = await LocationService.getCurrentLocation()
+      lat = loc.latitude
+      lng = loc.longitude
+    } catch (err) {
+      promptAction.showToast({ message: '报到必须开启定位，请打开定位后重试' })
+      return
+    }
+    // 3) 报到 + 上传现场照
     await this.doCheckin(item, lat, lng, picked)
+  }
+
+  // 第二步·开始任务（须先报到）
+  async startVisit(item: ServiceVisitItem) {
+    try {
+      let resp = await Api.postEmpty(`/service-visits/${item.id}/start/`) as Record<string, Object>
+      let msg: string = resp['message'] !== undefined ? resp['message'] as string : '任务已开始'
+      promptAction.showToast({ message: msg })
+      this.loadVisits()
+    } catch (err) {
+      promptAction.showToast({ message: (err as Error).message })
+    }
   }
 
   // 催促居民确认（24 小时内同一工单只发一次）
@@ -468,19 +447,37 @@ struct VolunteerServicePage {
         .backgroundColor('#FEF2F2').borderRadius(Theme.RADIUS_SM)
       }
 
+      // ==== 三段流程按钮依次出现：① 报到 → ② 开始任务 → ③ 完成任务 ====
       if (item.status === 'assigned') {
-        Button('📍 到场报到（拍照+定位）')
+        Button('① 📍 到场报到（必须拍照+定位）')
           .width('100%').height(40).fontSize(14).fontColor(Color.White)
           .backgroundColor(Theme.PRIMARY).borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
           .onClick(() => { this.checkinVisit(item) })
       }
 
-      if (item.status === 'assigned' || item.status === 'processing') {
-        Button('提交完成（待居民确认）')
+      if (item.status === 'checked_in') {
+        Row() {
+          Text('✅').fontSize(14)
+          Text(`已到场报到${item.checkin_remote ? '（距离异常，管理员可见）' : ''}`)
+            .fontSize(13).fontColor(item.checkin_remote ? Theme.DANGER : Theme.SUCCESS).margin({ left: 6 })
+        }
+        .width('100%').padding(10).margin({ top: 10 })
+        .backgroundColor(item.checkin_remote ? '#FEF2F2' : '#F0FDF4').borderRadius(Theme.RADIUS_SM)
+
+        Button('② ▶ 开始任务')
+          .width('100%').height(40).fontSize(14).fontColor(Color.White)
+          .backgroundColor(Theme.TEAL).borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
+          .onClick(() => { this.startVisit(item) })
+      }
+
+      if (item.status === 'processing') {
+        Button('③ ✅ 完成任务（待居民确认）')
           .width('100%').height(40).fontSize(14).fontColor(Color.White)
           .backgroundColor(Theme.SUCCESS).borderRadius(Theme.RADIUS_SM).margin({ top: 8 })
           .onClick(() => { this.openCompleteForm(item) })
+      }
 
+      if (item.status === 'assigned' || item.status === 'checked_in' || item.status === 'processing') {
         Button('申请取消服务')
           .width('100%').height(36).fontSize(13).fontColor('#EF4444')
           .backgroundColor('#FEF2F2').borderRadius(Theme.RADIUS_SM).margin({ top: 8 })

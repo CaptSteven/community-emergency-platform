@@ -206,6 +206,7 @@ export interface ServiceVisitItem {
   checkin_photo: string | null     // 到场报到照片
   checkin_distance_m: number | null // 报到距服务地址的距离（米）
   checkin_remote: boolean          // 远程报到（距离异常）
+  checkin_at: string | null        // 到场报到时间
   systolic: number | null
   diastolic: number | null
   heart_rate: number | null

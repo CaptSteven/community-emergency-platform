@@ -116,6 +116,7 @@ class ServiceVisit(models.Model):
 
     STATUS_CHOICES = (
         ('assigned', '已排班'),
+        ('checked_in', '已报到'),
         ('processing', '服务中'),
         ('pending_confirm', '待居民确认'),
         ('completed', '已完成'),
@@ -178,6 +179,7 @@ class ServiceVisit(models.Model):
         help_text='报到位置与服务地址的直线距离；超 500 米标记远程报到'
     )
     checkin_remote = models.BooleanField(default=False, verbose_name='远程报到(距离异常)')
+    checkin_at = models.DateTimeField(null=True, blank=True, verbose_name='到场报到时间')
 
     # 健康记录字段（仅健康检查类服务使用，其余留空）
     systolic = models.IntegerField(null=True, blank=True, verbose_name='收缩压(高压)')

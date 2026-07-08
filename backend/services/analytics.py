@@ -36,7 +36,7 @@ class ServiceOverviewAPIView(APIView):
             'visits_this_week': week_visits.count(),
             'completed_this_week': week_visits.filter(status='completed').count(),
             'pending_visits': ServiceVisit.objects.filter(
-                status__in=['assigned', 'processing', 'pending_confirm']
+                status__in=['assigned', 'checked_in', 'processing', 'pending_confirm']
             ).count(),
             'unassigned_visits': ServiceVisit.objects.filter(
                 status='assigned', volunteer__isnull=True
@@ -66,7 +66,7 @@ class UpcomingVisitsAPIView(APIView):
         qs = (
             ServiceVisit.objects.filter(
                 scheduled_date__gte=today, scheduled_date__lte=end,
-                status__in=['assigned', 'processing'],
+                status__in=['assigned', 'checked_in', 'processing'],
             )
             .select_related('resident', 'volunteer', 'service_type')
             .order_by('scheduled_date', 'created_at')

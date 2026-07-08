@@ -115,7 +115,7 @@ def is_due(subscription, today):
 
 
 def has_open_visit(subscription):
-    return subscription.visits.filter(status__in=['assigned', 'processing']).exists()
+    return subscription.visits.filter(status__in=['assigned', 'checked_in', 'processing']).exists()
 
 
 def create_visit_for(subscription, today, notify=True):

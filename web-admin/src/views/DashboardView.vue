@@ -175,7 +175,7 @@ const progressCards = computed(() => {
 })
 
 const statusTagType = status => {
-  const map = { completed: 'success', processing: 'warning', pending_confirm: 'warning', assigned: 'primary', pending: 'info', unassigned: 'danger', cancelled: 'info' }
+  const map = { completed: 'success', checked_in: 'success', processing: 'warning', pending_confirm: 'warning', assigned: 'primary', pending: 'info', unassigned: 'danger', cancelled: 'info' }
   return map[status] || 'info'
 }
 

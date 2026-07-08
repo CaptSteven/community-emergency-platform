@@ -176,7 +176,9 @@ class VisitLifecycleTests(APITestCase):
     def test_start_complete_then_resident_confirm(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        r1 = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        r0 = self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
+        self.assertEqual(r0.status_code, 200)
+        r1 = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
         self.assertEqual(r1.status_code, 200)
         visit.refresh_from_db()
         self.assertEqual(visit.status, 'processing')
@@ -212,7 +214,8 @@ class VisitLifecycleTests(APITestCase):
     def test_confirm_rejected_for_non_owner_resident(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
+        self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
         self.client.post('/api/service-visits/%d/complete/' % visit.id,
                          dict(VITALS, feedback='ok'), format='json')
         # 另一位居民不能确认别人的工单（get_queryset 收敛 -> 404）
@@ -224,10 +227,8 @@ class VisitLifecycleTests(APITestCase):
         self.assertEqual(visit.status, 'pending_confirm')   # 状态未变
 
     def test_volunteer_cannot_confirm_own_visit(self):
-        visit = self._visit()
+        visit = self._visit(status='pending_confirm')
         self.client.force_authenticate(self.vol)
-        self.client.post('/api/service-visits/%d/complete/' % visit.id,
-                         dict(VITALS, feedback='ok'), format='json')
         resp = self.client.post('/api/service-visits/%d/confirm/' % visit.id, {}, format='json')
         self.assertIn(resp.status_code, (403, 404))
 
@@ -256,7 +257,9 @@ class VisitLifecycleTests(APITestCase):
     def test_cannot_start_others_visit(self):
         visit = self._visit(volunteer=self.vol)
         self.client.force_authenticate(self.vol2)
-        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        resp = self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
+        self.assertIn(resp.status_code, (403, 404))
+        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
         self.assertIn(resp.status_code, (403, 404))
 
     def test_cancel_reverts_and_reassigns(self):
@@ -430,6 +433,7 @@ class AccessControlHardeningTests(APITestCase):
     # 对抗测试回归：超范围体温不得落库（曾导致该行读取 500 的数据投毒 DoS）
     def test_complete_rejects_out_of_range_temperature(self):
         visit = self._visit()
+        ServiceVisit.objects.filter(id=visit.id).update(status='processing')
         self.client.force_authenticate(self.vol)
         resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
                                 {'temperature': 99999.9}, format='json')
@@ -442,6 +446,7 @@ class AccessControlHardeningTests(APITestCase):
 
     def test_complete_rejects_out_of_range_systolic(self):
         visit = self._visit()
+        ServiceVisit.objects.filter(id=visit.id).update(status='processing')
         self.client.force_authenticate(self.vol)
         resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
                                 {'systolic': 99999}, format='json')
@@ -449,6 +454,7 @@ class AccessControlHardeningTests(APITestCase):
 
     def test_complete_accepts_valid_vitals(self):
         visit = self._visit()
+        ServiceVisit.objects.filter(id=visit.id).update(status='processing')
         self.client.force_authenticate(self.vol)
         resp = self.client.post('/api/service-visits/%d/complete/' % visit.id,
                                 {'systolic': 120, 'diastolic': 80, 'heart_rate': 72, 'temperature': 36.6},
@@ -654,7 +660,8 @@ class SingleTaskAndPointsTests(APITestCase):
         visit = ServiceVisit.objects.create(service_type=self.stype, resident=self.resident,
                                             volunteer=self.vol1, scheduled_date=date.today(), status='assigned')
         self.client.force_authenticate(self.vol1)
-        self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
+        self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
         resp = self.client.post('/api/service-visits/%d/complete/' % visit.id, dict(VITALS, feedback='ok'), format='json')
         self.assertEqual(resp.status_code, 200)
         visit.refresh_from_db()
@@ -807,7 +814,7 @@ class CheckinTests(APITestCase):
     def test_checkin_requires_location(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        resp = self.client.post('/api/service-visits/%d/checkin/' % visit.id, {}, format='json')
         self.assertEqual(resp.status_code, 400)
         visit.refresh_from_db()
         self.assertEqual(visit.status, 'assigned')   # 状态未变
@@ -815,32 +822,33 @@ class CheckinTests(APITestCase):
     def test_checkin_near_ok(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        resp = self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
         self.assertEqual(resp.status_code, 200)
         visit.refresh_from_db()
-        self.assertEqual(visit.status, 'processing')
-        self.assertIsNotNone(visit.started_at)
+        self.assertEqual(visit.status, 'checked_in')
+        self.assertIsNotNone(visit.checkin_at)
         self.assertLessEqual(visit.checkin_distance_m, 500)
         self.assertFalse(visit.checkin_remote)
 
-    def test_checkin_far_marks_remote(self):
+    def test_checkin_far_marks_remote_and_notifies(self):
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        # 北京坐标 → 距乌鲁木齐千里之外，仍可报到但标记远程
-        resp = self.client.post('/api/service-visits/%d/start/' % visit.id,
+        # 北京坐标 → 距乌鲁木齐千里之外，仍可报到但标记远程并提醒志愿者数据异常
+        resp = self.client.post('/api/service-visits/%d/checkin/' % visit.id,
                                 {'latitude': 39.915, 'longitude': 116.404}, format='json')
         self.assertEqual(resp.status_code, 200)
         visit.refresh_from_db()
-        self.assertEqual(visit.status, 'processing')
+        self.assertEqual(visit.status, 'checked_in')
         self.assertTrue(visit.checkin_remote)
         self.assertGreater(visit.checkin_distance_m, 500)
         self.assertIn('远程报到', resp.data['message'])
+        self.assertTrue(self.vol.notifications.filter(title='报到位置距离异常').exists())
 
     def test_checkin_photo_upload(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         visit = self._visit()
         self.client.force_authenticate(self.vol)
-        self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
         photo = SimpleUploadedFile('checkin.jpg', b'fakejpegbytes', content_type='image/jpeg')
         resp = self.client.post('/api/service-visits/%d/checkin-photo/' % visit.id,
                                 {'photo': photo}, format='multipart')
@@ -861,8 +869,44 @@ class CheckinTests(APITestCase):
         other = make_user('ck_v2', 'volunteer', community=COMMUNITY, skills='医疗')
         visit = self._visit()
         self.client.force_authenticate(other)
-        resp = self.client.post('/api/service-visits/%d/start/' % visit.id, CHECKIN, format='json')
+        resp = self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
         self.assertIn(resp.status_code, (403, 404))
+
+    def test_three_step_flow_enforced(self):
+        """三段流程强约束：未报到不能开始/完成；报到后未开始不能完成；全链路走通。"""
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        # 未报到：开始/完成都被拦
+        r = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('报到', r.data['message'])
+        r = self.client.post('/api/service-visits/%d/complete/' % visit.id, {'feedback': 'x'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('报到', r.data['message'])
+        # 报到后：完成仍被拦（要求先开始）
+        self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
+        r = self.client.post('/api/service-visits/%d/complete/' % visit.id, {'feedback': 'x'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('开始任务', r.data['message'])
+        # 开始 → 完成 全链路
+        r = self.client.post('/api/service-visits/%d/start/' % visit.id, {}, format='json')
+        self.assertEqual(r.status_code, 200)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'processing')
+        self.assertIsNotNone(visit.started_at)
+        r = self.client.post('/api/service-visits/%d/complete/' % visit.id, {'feedback': 'ok'}, format='json')
+        self.assertEqual(r.status_code, 200)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'pending_confirm')
+
+    def test_checked_in_not_punished(self):
+        # 已报到的工单即使过了 DDL 也不罚（罚的是根本没到场的）
+        visit = self._visit(slot=9)
+        ServiceVisit.objects.filter(id=visit.id).update(
+            status='checked_in', scheduled_date=date.today() - timedelta(days=1))
+        self.assertEqual(scheduler.punish_overdue(), 0)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'checked_in')
 
 
 class DeadlinePenaltyTests(APITestCase):
@@ -1029,7 +1073,7 @@ class HealthRecordRequiredTests(APITestCase):
     def _visit(self, stype):
         return ServiceVisit.objects.create(
             service_type=stype, resident=self.resident, volunteer=self.vol,
-            scheduled_date=date.today(), status='assigned')
+            scheduled_date=date.today(), status='processing')
 
     def test_health_service_rejects_empty_vitals(self):
         visit = self._visit(self.health_type)
@@ -1038,7 +1082,7 @@ class HealthRecordRequiredTests(APITestCase):
                                 {'feedback': '做完了'}, format='json')
         self.assertEqual(resp.status_code, 400)
         visit.refresh_from_db()
-        self.assertEqual(visit.status, 'assigned')
+        self.assertEqual(visit.status, 'processing')
 
     def test_health_service_rejects_partial_vitals(self):
         visit = self._visit(self.health_type)

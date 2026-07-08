@@ -109,7 +109,7 @@
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" :disabled="!['assigned','processing'].includes(row.status)" @click="openReassign(row)">改派</el-button>
+            <el-button size="small" :disabled="!['assigned','checked_in','processing'].includes(row.status)" @click="openReassign(row)">改派</el-button>
             <el-button size="small" type="primary" plain @click="openDetail(row)">详情</el-button>
           </template>
         </el-table-column>
@@ -164,8 +164,8 @@
         <el-descriptions-item label="志愿者">{{ current.volunteer_name || '待派单' }}</el-descriptions-item>
         <el-descriptions-item label="计划日期">{{ current.scheduled_date }}</el-descriptions-item>
         <el-descriptions-item label="预约时段">{{ current.slot_display || '不限' }}</el-descriptions-item>
-        <el-descriptions-item v-if="current.started_at" label="到场报到">
-          {{ current.started_at.replace('T', ' ').slice(0, 19) }}
+        <el-descriptions-item v-if="current.checkin_at" label="到场报到">
+          {{ current.checkin_at.replace('T', ' ').slice(0, 19) }}
           <template v-if="current.checkin_distance_m != null">
             · 距服务地址 {{ current.checkin_distance_m }} 米
           </template>
@@ -208,6 +208,7 @@ import { buildPageParams, unwrapPaginated } from '../utils/pagination'
 
 const STATUS = [
   { value: 'assigned', label: '已排班' },
+  { value: 'checked_in', label: '已报到' },
   { value: 'processing', label: '服务中' },
   { value: 'pending_confirm', label: '待居民确认' },
   { value: 'completed', label: '已完成' },
@@ -217,12 +218,12 @@ const STATUS = [
 
 // 统一状态色
 const STATUS_COLOR = {
-  assigned: '#F59E0B', processing: '#2563EB', pending_confirm: '#8B5CF6',
+  assigned: '#F59E0B', checked_in: '#0D9488', processing: '#2563EB', pending_confirm: '#8B5CF6',
   completed: '#16A34A', cancelled: '#94A3B8', missed: '#EF4444'
 }
 
 const statusType = s => ({
-  assigned: 'warning', processing: 'primary', pending_confirm: 'warning',
+  assigned: 'warning', checked_in: 'success', processing: 'primary', pending_confirm: 'warning',
   completed: 'success', cancelled: 'info', missed: 'danger'
 }[s] || 'info')
 

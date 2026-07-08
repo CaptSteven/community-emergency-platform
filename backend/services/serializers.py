@@ -101,12 +101,12 @@ class ServiceVisitSerializer(serializers.ModelSerializer):
             'scheduled_date', 'scheduled_slot', 'slot_display',
             'status', 'status_display', 'address', 'latitude', 'longitude',
             'note', 'duration_minutes', 'feedback', 'completion_photo', 'confirm_photo',
-            'checkin_photo', 'checkin_distance_m', 'checkin_remote',
+            'checkin_photo', 'checkin_distance_m', 'checkin_remote', 'checkin_at',
             'systolic', 'diastolic', 'heart_rate', 'temperature', 'health_note',
             'started_at', 'completed_at', 'confirmed_at', 'created_at',
         ]
         read_only_fields = [
             'service_type', 'resident', 'volunteer', 'status', 'completion_photo', 'confirm_photo',
-            'checkin_photo', 'checkin_distance_m', 'checkin_remote',
+            'checkin_photo', 'checkin_distance_m', 'checkin_remote', 'checkin_at',
             'started_at', 'completed_at', 'confirmed_at', 'created_at',
         ]
