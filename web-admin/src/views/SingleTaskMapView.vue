@@ -262,7 +262,7 @@ const loadTasks = async () => {
 }
 
 const loadVolunteers = async () => {
-  const data = await request.get('/users/', { params: { role: 'volunteer', page_size: 200 } })
+  const data = await request.get('/users/', { params: { role: 'volunteer', page_size: 200, active: 'true', verified: 'true' } })
   volunteers.value = unwrapPaginated(data).list
 }
 

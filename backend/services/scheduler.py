@@ -63,7 +63,7 @@ def next_rotation_volunteer(subscription):
     if not group:
         return None
     idx = subscription.rotation_index % len(group)
-    vol = User.objects.filter(id=group[idx], is_active=True).first()
+    vol = User.objects.filter(id=group[idx], is_active=True, profile__is_verified=True).first()
     subscription.rotation_index = (idx + 1) % len(group)
     subscription.save(update_fields=['rotation_index'])
     return vol
@@ -71,7 +71,7 @@ def next_rotation_volunteer(subscription):
 
 def eligible_volunteers(service_type, community=''):
     """返回符合该服务类型的候选志愿者查询集（技能 + 社区匹配）。"""
-    qs = User.objects.filter(is_active=True, profile__role='volunteer')
+    qs = User.objects.filter(is_active=True, profile__role='volunteer', profile__is_verified=True)
     if community:
         qs = qs.filter(profile__community=community)
     skill = (service_type.required_skill or '').strip()

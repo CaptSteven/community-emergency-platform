@@ -238,7 +238,7 @@ const loadRefs = async () => {
     const [r, t, v] = await Promise.all([
       request.get('/users/', { params: { role: 'resident', page_size: 200 } }),
       request.get('/service-types/', { params: { is_active: true, page_size: 200 } }),
-      request.get('/users/', { params: { role: 'volunteer', page_size: 200 } })
+      request.get('/users/', { params: { role: 'volunteer', page_size: 200, active: 'true', verified: 'true' } })
     ])
     residents.value = unwrapPaginated(r).list
     types.value = unwrapPaginated(t).list

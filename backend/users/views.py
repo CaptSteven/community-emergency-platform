@@ -252,9 +252,22 @@ class UserViewSet(viewsets.ModelViewSet):
         role = self.request.query_params.get('role')
         is_available = self.request.query_params.get('is_available')
         search = self.request.query_params.get('search')
+        # ?active=true 排除未激活账号；?verified=true 只留审核通过的志愿者（派单选人用）
+        active = self.request.query_params.get('active')
+        verified = self.request.query_params.get('verified')
 
         if role:
             queryset = queryset.filter(profile__role=role)
+
+        if active == 'true':
+            queryset = queryset.filter(is_active=True)
+        elif active == 'false':
+            queryset = queryset.filter(is_active=False)
+
+        if verified == 'true':
+            queryset = queryset.filter(profile__is_verified=True)
+        elif verified == 'false':
+            queryset = queryset.filter(profile__is_verified=False)
 
         if is_available == 'true':
             queryset = queryset.filter(profile__is_available=True)

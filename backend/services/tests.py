@@ -17,6 +17,9 @@ COMMUNITY = '乌鲁木齐水磨沟社区'
 
 
 def make_user(username, role, password='123456', **profile):
+    # 志愿者默认已认证（正式开通的账号都过了审核）；测未审核场景显式传 is_verified=False
+    if role == 'volunteer':
+        profile.setdefault('is_verified', True)
     user = User.objects.create_user(username=username, password=password)
     UserProfile.objects.create(user=user, role=role, **profile)
     return user
@@ -823,6 +826,58 @@ class GenerateNowGuardTests(APITestCase):
         self.assertEqual(resp.status_code, 200)
         visit = ServiceVisit.objects.get(subscription=self.sub)
         self.assertEqual(visit.volunteer, self.vol)
+
+
+class UnverifiedVolunteerGuardTests(APITestCase):
+    """未通过审核（is_verified=False）的志愿者不能被安排任务：匹配池、轮换、改派、手动编组全挡。"""
+
+    def setUp(self):
+        self.admin = make_user('uv_admin', 'admin', community=COMMUNITY)
+        self.resident = make_user('uv_res', 'resident', community=COMMUNITY)
+        self.stype = ServiceType.objects.create(name='健康检查', code='uv_health', required_skill='医疗')
+        self.ok_vol = make_user('uv_ok', 'volunteer', community=COMMUNITY, skills='医疗')
+        self.raw_vol = make_user('uv_raw', 'volunteer', community=COMMUNITY, skills='医疗', is_verified=False)
+
+    def test_eligible_pool_excludes_unverified(self):
+        ids = {u.id for u in scheduler.eligible_volunteers(self.stype, COMMUNITY)}
+        self.assertIn(self.ok_vol.id, ids)
+        self.assertNotIn(self.raw_vol.id, ids)
+
+    def test_rotation_skips_unverified(self):
+        sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.stype, frequency='weekly', is_active=True,
+            rotation_volunteers=[self.raw_vol.id])
+        self.assertIsNone(scheduler.next_rotation_volunteer(sub))
+
+    def test_reassign_rejects_unverified(self):
+        visit = ServiceVisit.objects.create(
+            service_type=self.stype, resident=self.resident, volunteer=self.ok_vol,
+            scheduled_date=date.today(), status='assigned')
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-visits/%d/reassign/' % visit.id,
+                                {'volunteer_id': self.raw_vol.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('未通过审核', resp.data['message'])
+        visit.refresh_from_db()
+        self.assertEqual(visit.volunteer, self.ok_vol)   # 原志愿者不变
+
+    def test_set_group_filters_unverified(self):
+        sub = ServiceSubscription.objects.create(
+            resident=self.resident, service_type=self.stype, frequency='weekly', is_active=True)
+        self.client.force_authenticate(self.admin)
+        resp = self.client.post('/api/service-subscriptions/%d/set-group/' % sub.id,
+                                {'volunteer_ids': [self.raw_vol.id, self.ok_vol.id]}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        sub.refresh_from_db()
+        self.assertEqual(sub.rotation_volunteers, [self.ok_vol.id])
+
+    def test_users_api_verified_filter(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get('/api/users/?role=volunteer&verified=true')
+        rows = resp.data if isinstance(resp.data, list) else resp.data.get('results', [])
+        names = {r['username'] for r in rows}
+        self.assertIn('uv_ok', names)
+        self.assertNotIn('uv_raw', names)
 
 
 class CheckinTests(APITestCase):

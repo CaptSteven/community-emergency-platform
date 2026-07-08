@@ -289,9 +289,10 @@ class HelpRequestViewSet(viewsets.ModelViewSet):
         help_request = self.get_object()
 
         try:
-            volunteer = User.objects.select_related('profile').get(id=volunteer_id, profile__role='volunteer')
+            volunteer = User.objects.select_related('profile').get(
+                id=volunteer_id, profile__role='volunteer', is_active=True, profile__is_verified=True)
         except User.DoesNotExist:
-            return Response({'message': '志愿者用户不存在或该用户不是志愿者'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'message': '志愿者不存在、未通过审核或不可用'}, status=status.HTTP_404_NOT_FOUND)
 
         with transaction.atomic():
             help_request = HelpRequest.objects.select_for_update().get(id=help_request.id)

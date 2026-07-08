@@ -6,6 +6,9 @@ from tasks.models import VolunteerTask, TaskCancellation
 
 
 def make_user(username, role, password='123456', **profile):
+    # 志愿者默认已认证（正式开通的账号都过了审核）；测未审核场景显式传 is_verified=False
+    if role == 'volunteer':
+        profile.setdefault('is_verified', True)
     user = User.objects.create_user(username=username, password=password)
     UserProfile.objects.create(user=user, role=role, **profile)
     return user

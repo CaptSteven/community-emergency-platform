@@ -279,7 +279,7 @@ const handleKindChange = () => { pagination.page = 1; loadData() }
 const loadRefs = async () => {
   try {
     const [v, t] = await Promise.all([
-      request.get('/users/', { params: { role: 'volunteer', page_size: 200 } }),
+      request.get('/users/', { params: { role: 'volunteer', page_size: 200, active: 'true', verified: 'true' } }),
       request.get('/service-types/', { params: { is_active: true, page_size: 200 } })
     ])
     volunteers.value = unwrapPaginated(v).list

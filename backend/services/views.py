@@ -239,7 +239,9 @@ class ServiceSubscriptionViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 return Response({'message': 'volunteer_ids 含非法 id'}, status=status.HTTP_400_BAD_REQUEST)
         # 只保留仍是有效志愿者的 id，保持给定顺序、去重
-        valid = set(User.objects.filter(id__in=ids, is_active=True, profile__role='volunteer').values_list('id', flat=True))
+        valid = set(User.objects.filter(
+            id__in=ids, is_active=True, profile__role='volunteer', profile__is_verified=True,
+        ).values_list('id', flat=True))
         ordered = []
         for i in ids:
             if i in valid and i not in ordered:
@@ -693,9 +695,10 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             return Response({'message': '当前状态不可改派'}, status=status.HTTP_400_BAD_REQUEST)
         volunteer_id = _body(request).get('volunteer_id')
         try:
-            volunteer = User.objects.get(pk=int(volunteer_id), profile__role='volunteer', is_active=True)
+            volunteer = User.objects.get(
+                pk=int(volunteer_id), profile__role='volunteer', is_active=True, profile__is_verified=True)
         except (User.DoesNotExist, ValueError, TypeError):
-            return Response({'message': '指定志愿者不存在或不可用'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': '指定志愿者不存在、未通过审核或不可用'}, status=status.HTTP_400_BAD_REQUEST)
         visit.volunteer = volunteer
         visit.status = 'assigned'
         visit.save(update_fields=['volunteer', 'status'])
