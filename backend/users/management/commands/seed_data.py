@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
@@ -8,7 +8,7 @@ from rest_framework.authtoken.models import Token
 from users.models import UserProfile, VolunteerApplication
 from alerts.models import Warning
 from resources.models import Shelter, Material
-from services.models import ServiceType, ServiceSubscription
+from services.models import ServiceType, ServiceSubscription, ServiceVisit
 from services import scheduler
 
 # 演示社区：乌鲁木齐水磨沟社区（水磨沟区中心约 87.6417, 43.8256）
@@ -18,7 +18,28 @@ BASE_LAT = 43.8256
 
 
 class Command(BaseCommand):
-    help = '初始化演示数据（社区长期服务平台）'
+    help = '初始化演示数据（社区长期服务平台）。--reset 先清空全部演示账号与业务数据（保留超管）。'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--reset', action='store_true',
+                            help='先删除全部通知/工单/计划/申请与非超管账号，再重建演示数据')
+
+    def wipe(self):
+        """清空演示数据：业务表全清，账号只保留超级管理员。"""
+        from notifications.models import Notification, DeviceToken
+        from tasks.models import TaskCancellation, VolunteerTask
+        from requests_app.models import HelpRequest
+
+        Notification.objects.all().delete()
+        DeviceToken.objects.all().delete()
+        TaskCancellation.objects.all().delete()
+        VolunteerTask.objects.all().delete()
+        HelpRequest.objects.all().delete()
+        ServiceVisit.objects.all().delete()
+        ServiceSubscription.objects.all().delete()
+        VolunteerApplication.objects.all().delete()
+        removed, _ = User.objects.filter(is_superuser=False).delete()
+        self.stdout.write(self.style.WARNING(f'已清空演示数据（删除非超管账号及关联记录 {removed} 条）'))
 
     def create_user(self, username, password, role, phone='', community=COMMUNITY, address='', longitude=None, latitude=None, skills=''):
         user, created = User.objects.get_or_create(username=username)
@@ -60,6 +81,9 @@ class Command(BaseCommand):
         return user
 
     def handle(self, *args, **options):
+        if options.get('reset'):
+            self.wipe()
+
         self.create_user('admin02', '123456', 'admin', '13800000001')
 
         # 鸿蒙端登录页默认展示 resident1 / volunteer1，因此后端初始化也创建同名账号。
@@ -68,6 +92,8 @@ class Command(BaseCommand):
                                      address='水磨沟区新兴街1号楼', longitude=BASE_LNG + 0.002, latitude=BASE_LAT + 0.001)
         resident02 = self.create_user('resident02', '123456', 'resident', '13800000012',
                                       address='水磨沟区南湖南路5号楼', longitude=BASE_LNG - 0.003, latitude=BASE_LAT + 0.002)
+        resident03 = self.create_user('resident03', '123456', 'resident', '13800000014',
+                                      address='水磨沟区七道湾路12号楼', longitude=BASE_LNG + 0.004, latitude=BASE_LAT - 0.0015)
 
         # 志愿者：技能决定可承接的服务类型（自动排班按技能关键字匹配）。
         self.create_user('volunteer1', '123456', 'volunteer', '13800000003',
@@ -190,8 +216,87 @@ class Command(BaseCommand):
                 sub.preferred_slot = slot
                 sub.save(update_fields=['preferred_slot'])
 
-        # 生成一批到期工单并自动派单，方便演示（不发通知，避免刷屏）
-        scheduler.generate_due_visits(notify=False)
+        # === 演示工单：铺设完整状态样本（时间相对今天，坐标全部位于水磨沟社区）===
+        # 各状态：待派单(未落实)×3 / 已排班待报到×2 / 已报到×1 / 服务中×1 / 待居民确认×1 / 已完成×2 / 已错过×1
+        vol_tester = User.objects.get(username='tester')
+        vol1 = User.objects.get(username='volunteer1')
+        vol3 = User.objects.get(username='volunteer03')
+        vol4 = User.objects.get(username='volunteer04')
+        vol5 = User.objects.get(username='volunteer05')
+        vol8 = User.objects.get(username='volunteer08')
+        today = date.today()
+        now = timezone.now()
+
+        def mk_visit(res, code, vol, status, day_offset, slot, **extra):
+            rp = getattr(res, 'profile', None)
+            return ServiceVisit.objects.create(
+                subscription=None, service_type=type_objs[code], resident=res, volunteer=vol,
+                scheduled_date=today + timedelta(days=day_offset), scheduled_slot=slot, status=status,
+                address=(rp.address if rp else ''),
+                latitude=(rp.current_latitude if rp else None),
+                longitude=(rp.current_longitude if rp else None),
+                **extra,
+            )
+
+        if not ServiceVisit.objects.exists():
+            # ① 未落实：待管理员派单（单次任务地图演示）
+            mk_visit(resident1, 'repair', None, 'assigned', 1, 10, note='卫生间水龙头漏水，需要上门维修')
+            mk_visit(resident02, 'grocery', None, 'assigned', 0, 15, note='帮忙代购米面油和蔬菜')
+            mk_visit(resident03, 'escort', None, 'assigned', 2, 9, note='陪同去水磨沟区医院复查')
+
+            # ② 已排班待报到（今日晚间时段，不会立刻被超时扫描罚分）
+            mk_visit(resident1, 'health_check', vol_tester, 'assigned', 0, 19, note='每周例行血压体温检查')
+            mk_visit(resident02, 'cleaning', vol1, 'assigned', 1, 9)
+
+            # ③ 已到场报到，待开始（报到坐标在居民楼下约 80 米）
+            mk_visit(resident1, 'home_bath', vol4, 'checked_in', 0, 19,
+                     checkin_latitude=BASE_LAT + 0.0017, checkin_longitude=BASE_LNG + 0.002,
+                     checkin_distance_m=80, checkin_remote=False, checkin_at=now - timedelta(minutes=10))
+
+            # ④ 服务中
+            mk_visit(resident02, 'meal_delivery', vol8, 'processing', 0, 19,
+                     checkin_latitude=BASE_LAT + 0.002, checkin_longitude=BASE_LNG - 0.003,
+                     checkin_distance_m=45, checkin_remote=False,
+                     checkin_at=now - timedelta(minutes=30), started_at=now - timedelta(minutes=25))
+
+            # ⑤ 待居民确认（演示居民确认 + 志愿者催促；2 小时前提交，48h 内不会被自动确认）
+            mk_visit(resident1, 'grocery', vol5, 'pending_confirm', 0, 9,
+                     feedback='生活物资已代购送达，老人已签收',
+                     checkin_distance_m=120, checkin_remote=False,
+                     checkin_at=now - timedelta(hours=3), started_at=now - timedelta(hours=3),
+                     completed_at=now - timedelta(hours=2), duration_minutes=60)
+
+            # ⑥ 已完成（含健康记录与积分）
+            mk_visit(resident1, 'health_check', vol1, 'completed', -2, 9,
+                     systolic=128, diastolic=82, heart_rate=74, temperature=36.6,
+                     health_note='血压略高，建议清淡饮食', feedback='老人状态良好',
+                     checkin_distance_m=60, checkin_remote=False,
+                     checkin_at=now - timedelta(days=2, hours=3),
+                     started_at=now - timedelta(days=2, hours=3),
+                     completed_at=now - timedelta(days=2, hours=2),
+                     confirmed_at=now - timedelta(days=2, hours=1), duration_minutes=80)
+            mk_visit(resident02, 'haircut', vol8, 'completed', -5, 14,
+                     feedback='理发完成，老人很满意',
+                     checkin_distance_m=95, checkin_remote=False,
+                     checkin_at=now - timedelta(days=5, hours=2),
+                     started_at=now - timedelta(days=5, hours=2),
+                     completed_at=now - timedelta(days=5, hours=1),
+                     confirmed_at=now - timedelta(days=5), duration_minutes=30)
+
+            # ⑦ 已错过（昨日超时未报到，展示 DDL 罚分历史）
+            mk_visit(resident03, 'escort_affairs', vol3, 'missed', -1, 9, note='陪同去社保局办事')
+
+            # 完成单对应的志愿积分（10 + 每满30分钟加5）
+            for u, pts in ((vol1, 20), (vol8, 15)):
+                up = u.profile
+                up.points = pts
+                up.save(update_fields=['points'])
+
+        # 为 resident1 的健康检查计划编排循环组（web 端轮换演示）
+        hc_sub = ServiceSubscription.objects.filter(
+            resident=resident1, service_type=type_objs['health_check']).first()
+        if hc_sub and not hc_sub.rotation_volunteers:
+            scheduler.build_rotation_group(hc_sub)
 
         # 已在册志愿者默认为已认证
         UserProfile.objects.filter(role='volunteer').update(is_verified=True)
