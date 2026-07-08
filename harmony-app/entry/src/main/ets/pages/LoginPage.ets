@@ -195,6 +195,10 @@ struct LoginPage {
             .fontSize(13)
             .fontColor(Theme.TEXT_BODY)
             .margin({ top: 4 })
+          Text('测试志愿者(全技能·水磨沟)　tester / 123456')
+            .fontSize(13)
+            .fontColor(Theme.TEXT_BODY)
+            .margin({ top: 4 })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

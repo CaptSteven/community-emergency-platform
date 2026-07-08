@@ -88,6 +88,14 @@ class Command(BaseCommand):
         self.create_user('volunteer08', '123456', 'volunteer', '13800000009',
                          longitude=BASE_LNG + 0.0015, latitude=BASE_LAT - 0.003, skills='理发 送餐 家政')
 
+        # 测试志愿者：全技能、已认证、位于水磨沟区（距 resident1 约 20 米），任何服务类型都能派给他，
+        # 供联调/演示直接登录（tester / 123456）。报到想走「正常报到」路径时，
+        # 把模拟器虚拟定位设为 (43.8268, 87.6439) 即可。
+        self.create_user('tester', '123456', 'volunteer', '13800000010',
+                         address='水磨沟区新兴街2号楼',
+                         longitude=BASE_LNG + 0.0022, latitude=BASE_LAT + 0.0012,
+                         skills='医疗 护理 老人 急救 陪诊 助浴 健康 家政 保洁 代购 跑腿 维修 搬运 康复 理疗 理发 送餐')
+
         # === 社区服务目录 ===
         service_types = [
             # —— 原有 5 类 ——
