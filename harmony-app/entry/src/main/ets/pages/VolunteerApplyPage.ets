@@ -48,7 +48,7 @@ struct VolunteerApplyPage {
         fs.copyFileSync(src.fd, dst.fd)
         fs.closeSync(src)
         fs.closeSync(dst)
-        this.paths[index] = 'internal://cache/' + name
+        this.paths[index] = dest   // 真实沙箱路径（http multipart 不认 internal:// 伪协议）
         let flags: boolean[] = this.pickedFlags.slice()
         flags[index] = true
         this.pickedFlags = flags

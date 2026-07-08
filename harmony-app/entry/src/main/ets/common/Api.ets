@@ -1,8 +1,16 @@
 import http from '@ohos.net.http'
+import fs from '@ohos.file.fs'
+import util from '@ohos.util'
 import router from '@ohos.router'
 import { preferences } from '@kit.ArkData'
 import { common } from '@kit.AbilityKit'
 import { EmptyPayload, PaginatedList, UserInfo } from '../model/Models'
+
+// base64 图片上传载荷（uploadFile 专用）
+interface UploadB64Payload {
+  photo_b64: string
+  field: string
+}
 
 export class Session {
   static token: string = ''
@@ -102,50 +110,18 @@ export class Api {
     return await Api.request<T>(path, http.RequestMethod.PUT, data)
   }
 
-  // 上传本地文件(multipart/form-data)：用于求助者拍照确认完成
+  // 上传本地图片：读文件 → base64 → JSON POST {photo_b64, field}。
+  // 后端各上传接口兼容 multipart 与 base64 双通道；App 走 base64，
+  // 因为鸿蒙 http 模块的 multipart（filePath/data 部件）在部分设备与模拟器上会发出空文件。
   static async uploadFile(path: string, filePath: string, fieldName: string): Promise<Object> {
-    let httpRequest = http.createHttp()
-    let headers: Record<string, string> = {}
-    if (Session.token !== '') {
-      headers['Authorization'] = `Token ${Session.token}`
-    }
-    let formItem: http.MultiFormData = {
-      name: fieldName,
-      contentType: 'image/jpeg',
-      remoteFileName: 'proof.jpg',
-      filePath: filePath
-    }
-    let options: http.HttpRequestOptions = {
-      method: http.RequestMethod.POST,
-      header: headers,
-      multiFormDataList: [formItem],
-      expectDataType: http.HttpDataType.STRING,
-      connectTimeout: 15000,
-      readTimeout: 30000
-    }
-    try {
-      let response = await httpRequest.request(Api.BASE_URL + path, options)
-      let statusCode = response.responseCode as number
-      let resultText = response.result as string
-      if (statusCode < 200 || statusCode >= 300) {
-        let errorMessage: string = resultText
-        try {
-          let errorData = JSON.parse(resultText) as Record<string, Object>
-          if (errorData['message']) {
-            errorMessage = errorData['message'] as string
-          }
-        } catch (parseError) {
-        }
-        throw new Error(errorMessage)
-      }
-      if (resultText === '' || resultText === undefined) {
-        let empty: EmptyPayload = {}
-        return empty
-      }
-      return JSON.parse(resultText) as Object
-    } finally {
-      httpRequest.destroy()
-    }
+    let stat = fs.statSync(filePath)
+    let buf = new ArrayBuffer(stat.size)
+    let file = fs.openSync(filePath, fs.OpenMode.READ_ONLY)
+    fs.readSync(file.fd, buf)
+    fs.closeSync(file)
+    let b64: string = new util.Base64Helper().encodeToStringSync(new Uint8Array(buf))
+    let payload: UploadB64Payload = { photo_b64: b64, field: fieldName }
+    return await Api.request<UploadB64Payload>(path, http.RequestMethod.POST, payload)
   }
 
   static async request<T>(

@@ -196,12 +196,14 @@ struct ResidentServicePage {
       if (photoUri !== '') {
         let ctx = getContext(this) as common.UIAbilityContext
         let name: string = 'confirm_' + item.id + '.jpg'
+        let destPath: string = ctx.cacheDir + '/' + name
         let src = fs.openSync(photoUri, fs.OpenMode.READ_ONLY)
-        let dst = fs.openSync(ctx.cacheDir + '/' + name, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
+        let dst = fs.openSync(destPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE)
         fs.copyFileSync(src.fd, dst.fd)
         fs.closeSync(src)
         fs.closeSync(dst)
-        await Api.uploadFile(`/service-visits/${item.id}/confirm/`, 'internal://cache/' + name, 'photo')
+        // 注意：@ohos.net.http 的 multipart filePath 需要真实沙箱路径，不能用 internal://cache/ 伪协议
+        await Api.uploadFile(`/service-visits/${item.id}/confirm/`, destPath, 'photo')
       } else {
         await Api.postEmpty(`/service-visits/${item.id}/confirm/`)
       }

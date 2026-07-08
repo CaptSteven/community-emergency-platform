@@ -313,6 +313,20 @@ class VolunteerApplicationViewSet(viewsets.ModelViewSet):
             if slot in request.FILES:
                 setattr(app, slot, request.FILES[slot])
                 changed.append(slot)
+        # base64 JSON 通道（App 端 multipart 在部分设备上不可靠）：{photo_b64, field}
+        data = request.data if isinstance(request.data, dict) else {}
+        b64 = data.get('photo_b64')
+        slot = data.get('field')
+        if b64 and slot in self.IMAGE_SLOTS:
+            import base64
+            from django.core.files.base import ContentFile
+            try:
+                raw = base64.b64decode(b64)
+            except Exception:
+                raw = b''
+            if raw:
+                setattr(app, slot, ContentFile(raw, name=f'{slot}_{app.id or "new"}.jpg'))
+                changed.append(slot)
         if changed:
             app.save(update_fields=changed)
 

@@ -856,6 +856,34 @@ class CheckinTests(APITestCase):
         visit.refresh_from_db()
         self.assertTrue(bool(visit.checkin_photo))
 
+    def test_checkin_photo_base64_channel(self):
+        # App 走 base64 JSON 通道（鸿蒙 multipart 在部分设备上发空文件）
+        import base64
+        visit = self._visit()
+        self.client.force_authenticate(self.vol)
+        self.client.post('/api/service-visits/%d/checkin/' % visit.id, CHECKIN, format='json')
+        b64 = base64.b64encode(b'fake-jpeg-bytes-123').decode()
+        resp = self.client.post('/api/service-visits/%d/checkin-photo/' % visit.id,
+                                {'photo_b64': b64, 'field': 'photo'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        visit.refresh_from_db()
+        self.assertTrue(bool(visit.checkin_photo))
+        self.assertGreater(visit.checkin_photo.size, 0)
+
+    def test_confirm_photo_base64_channel(self):
+        import base64
+        visit = self._visit()
+        ServiceVisit.objects.filter(id=visit.id).update(status='pending_confirm')
+        self.client.force_authenticate(self.resident)
+        b64 = base64.b64encode(b'confirm-photo-bytes').decode()
+        resp = self.client.post('/api/service-visits/%d/confirm/' % visit.id,
+                                {'photo_b64': b64}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'completed')
+        self.assertTrue(bool(visit.confirm_photo))
+        self.assertGreater(visit.confirm_photo.size, 0)
+
     def test_checkin_photo_rejected_before_checkin(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         visit = self._visit()

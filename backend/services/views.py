@@ -41,6 +41,27 @@ def _admins():
     return User.objects.filter(Q(profile__role='admin') | Q(is_superuser=True)).distinct()
 
 
+def _photo_from_request(request, default_name):
+    """取上传照片：优先 multipart 的 photo 文件；否则接受 JSON body 的 photo_b64（base64）。
+    鸿蒙 http 模块的 multipart 在部分设备/模拟器上会发出空文件部件，App 端改走 base64 JSON 通道。
+    返回 (file_or_None, error_response_or_None)。"""
+    import base64
+    from django.core.files.base import ContentFile
+
+    if 'photo' in request.FILES:
+        return request.FILES['photo'], None
+    b64 = _body(request).get('photo_b64')
+    if b64:
+        try:
+            raw = base64.b64decode(b64)
+        except Exception:
+            return None, Response({'message': '照片数据无效'}, status=status.HTTP_400_BAD_REQUEST)
+        if not raw:
+            return None, Response({'message': '照片数据为空'}, status=status.HTTP_400_BAD_REQUEST)
+        return ContentFile(raw, name=default_name), None
+    return None, None
+
+
 class ServiceTypeViewSet(viewsets.ModelViewSet):
     """服务目录：所有登录用户可读，仅管理员可增删改。"""
     queryset = ServiceType.objects.all()
@@ -390,8 +411,11 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             visit.checkin_distance_m = None
             visit.checkin_remote = False
 
-        if 'photo' in request.FILES:
-            visit.checkin_photo = request.FILES['photo']
+        photo, perr = _photo_from_request(request, f'checkin_{visit.id}.jpg')
+        if perr is not None:
+            return perr
+        if photo is not None:
+            visit.checkin_photo = photo
 
         visit.status = 'checked_in'
         visit.checkin_at = timezone.now()
@@ -421,9 +445,12 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             return Response({'message': '只能上传自己工单的报到照片'}, status=status.HTTP_403_FORBIDDEN)
         if visit.status not in ('checked_in', 'processing'):
             return Response({'message': '当前状态不可上传报到照片'}, status=status.HTTP_400_BAD_REQUEST)
-        if 'photo' not in request.FILES:
+        photo, perr = _photo_from_request(request, f'checkin_{visit.id}.jpg')
+        if perr is not None:
+            return perr
+        if photo is None:
             return Response({'message': '缺少照片文件'}, status=status.HTTP_400_BAD_REQUEST)
-        visit.checkin_photo = request.FILES['photo']
+        visit.checkin_photo = photo
         visit.save(update_fields=['checkin_photo'])
         return Response({'message': '报到照片已上传'})
 
@@ -551,8 +578,11 @@ class ServiceVisitViewSet(viewsets.ModelViewSet):
             return Response({'message': '只能确认自己的服务'}, status=status.HTTP_403_FORBIDDEN)
         if visit.status != 'pending_confirm':
             return Response({'message': '当前状态不可确认'}, status=status.HTTP_400_BAD_REQUEST)
-        if 'photo' in request.FILES:
-            visit.confirm_photo = request.FILES['photo']
+        photo, perr = _photo_from_request(request, f'confirm_{visit.id}.jpg')
+        if perr is not None:
+            return perr
+        if photo is not None:
+            visit.confirm_photo = photo
         earned = scheduler.finalize_visit(visit)
         return Response({
             'message': f'已确认完成，志愿者获得 {earned} 积分',
