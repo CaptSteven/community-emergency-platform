@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 
 class Notification(models.Model):
     CATEGORY_CHOICES = (
-        ('warning', '灾害预警'),
+        ('warning', '重要提醒'),
         ('help_request', '居民求助'),
         ('task', '志愿者任务'),
         ('service', '社区服务'),

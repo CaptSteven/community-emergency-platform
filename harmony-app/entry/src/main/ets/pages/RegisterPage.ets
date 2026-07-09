@@ -303,7 +303,7 @@ struct RegisterPage {
             Column() {
               this.SectionTitle('技能标签（智能派单依据）')
 
-              TextInput({ placeholder: '如：医疗 急救 老人 物资 分发', text: this.skills })
+              TextInput({ placeholder: '如：医疗 急救 老人 维修', text: this.skills })
                 .height(48)
                 .backgroundColor('#F8FAFC')
                 .borderRadius(Theme.RADIUS_SM)

@@ -31,6 +31,9 @@ class Command(BaseCommand):
         from requests_app.models import HelpRequest
 
         Notification.objects.all().delete()
+        Warning.objects.all().delete()
+        Shelter.objects.all().delete()
+        Material.objects.all().delete()
         TaskCancellation.objects.all().delete()
         VolunteerTask.objects.all().delete()
         HelpRequest.objects.all().delete()
@@ -319,43 +322,5 @@ class Command(BaseCommand):
                 user=applicant,
                 defaults=dict(phone='13900000001', community=COMMUNITY, skills='维修 家政',
                               note='本人有 3 年水电维修经验，希望加入社区志愿服务。', status='pending'))
-
-        # === 应急模块（保留为次要能力）===
-        Warning.objects.get_or_create(
-            title='暴雨蓝色预警',
-            defaults={
-                'warning_type': 'rainstorm',
-                'level': 'blue',
-                'content': '预计未来数小时水磨沟区可能出现强降雨，请居民注意出行安全并防范内涝。',
-                'community': COMMUNITY,
-                'is_active': True,
-            }
-        )
-
-        Shelter.objects.get_or_create(
-            name='水磨沟区应急避难点',
-            defaults={
-                'address': '水磨沟区人民广场',
-                'capacity': 300,
-                'contact_phone': '13800000000',
-                'longitude': BASE_LNG,
-                'latitude': BASE_LAT,
-                'is_available': True,
-            }
-        )
-
-        Material.objects.get_or_create(
-            name='矿泉水',
-            defaults={
-                'category': '饮用水',
-                'quantity': 100,
-                'unit': '箱',
-                'storage_location': '社区仓库A区',
-                'warning_quantity': 20,
-                'production_date': timezone.now().date() - timedelta(days=120),
-                'expire_date': timezone.now().date() + timedelta(days=20),
-                'expiry_warning_days': 30,
-            }
-        )
 
         self.stdout.write(self.style.SUCCESS('演示数据初始化完成（乌鲁木齐水磨沟社区 · 社区长期服务）'))

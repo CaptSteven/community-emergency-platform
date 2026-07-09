@@ -116,7 +116,7 @@ const markRead = async (row, showMessage = true) => {
 const markAllRead = async () => { await request.post('/notifications/mark_all_read/'); ElMessage.success('已将发给我的消息全部标记为已读'); await loadData() }
 const deleteNotification = async row => { await ElMessageBox.confirm(`确定要删除消息「${row.title}」吗？`, '提示', { type: 'warning' }); await request.delete(`/notifications/${row.id}/`); ElMessage.success('删除成功'); await loadData() }
 const categoryTagType = category => ({ service: 'success', system: 'info', warning: 'danger', help_request: 'warning', task: 'primary' }[category] || 'info')
-const relatedTypeText = type => ({ service_visit: '上门服务', service_subscription: '服务计划', user: '用户', warning: '灾害预警', help_request: '居民求助', task: '志愿者任务' }[type] || type)
+const relatedTypeText = type => ({ service_visit: '上门服务', service_subscription: '服务计划', user: '用户', warning: '重要提醒', help_request: '居民求助', task: '志愿者任务' }[type] || type)
 const rowClassName = ({ row }) => row.is_read ? '' : 'unread-row'
 const formatTime = value => value ? value.replace('T', ' ').slice(0, 19) : '-'
 
